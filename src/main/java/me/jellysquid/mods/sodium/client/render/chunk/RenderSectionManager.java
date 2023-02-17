@@ -165,6 +165,14 @@ public class RenderSectionManager {
         }
     }
 
+    /**
+     * This is the main BFS search loop. It iterates over the queue of chunks to be
+     * processed until it is empty. For each iterated chunk it checks adjacent
+     * chunks in all directions that are connected visibly and schedules them if
+     * they are within the render distance and not frustum culled.
+     * {@code bfsEnqueue} handles updating the section's culling state and the
+     * frustum check.
+     */
     private void iterateChunks(ChunkRenderListBuilder list, Camera camera, Frustum frustum, int frame, boolean spectator) {
         this.initSearch(list, camera, frustum, frame, spectator);
 
@@ -495,6 +503,10 @@ public class RenderSectionManager {
         return x <= this.renderDistance && z <= this.renderDistance;
     }
 
+    /**
+     * Checks if the given chunk graph info for a node (a section) in the graph
+     * allows visibility to traverse through it from a direction to another.
+     */
     private boolean isCulled(ChunkGraphInfo node, Direction from, Direction to) {
         if (node.canCull(to)) {
             return true;
@@ -503,6 +515,12 @@ public class RenderSectionManager {
         return this.useOcclusionCulling && from != null && !node.isVisibleThrough(from, to);
     }
 
+    /**
+     * Initializes the BFS queue state to search for visible chunks. If the camera
+     * is in a section, only the current section is added to the queue. If the
+     * camera is not in a section, all sections at the top of the world/bottom of
+     * the world within render distance and the frustum are added to the queue.
+     */
     private void initSearch(ChunkRenderListBuilder list, Camera camera, Frustum frustum, int frame, boolean spectator) {
         this.currentFrame = frame;
         this.frustum = frustum;
@@ -565,7 +583,14 @@ public class RenderSectionManager {
         }
     }
 
-
+    /**
+     * Adds a render section to the BFS queue. It checks that the section hasn't
+     * already been processed as visible and that it's still inside the frustum.
+     * Before adding it to the queue, the last visible frame is updated so that it
+     * isn't added again in this frame if it has already been determined to be
+     * visible and the culling state is updated with the culling state of the parent
+     * section that led to this section being added to the queue.
+     */
     private void bfsEnqueue(ChunkRenderListBuilder list, RenderSection parent, RenderSection render, Direction flow) {
         ChunkGraphInfo info = render.getGraphInfo();
 
