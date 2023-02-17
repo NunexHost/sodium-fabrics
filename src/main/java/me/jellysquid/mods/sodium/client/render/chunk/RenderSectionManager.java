@@ -682,6 +682,8 @@ public class RenderSectionManager {
             return;
         }
 
+        frustumCheckPotentialCount++;
+
         // check if within a visible box to avoid checking the frustum
         boolean insideVisibleBox = false;
         float x = render.getOriginX();
@@ -699,10 +701,10 @@ public class RenderSectionManager {
         }
 
         if (!insideVisibleBox) {
+            frustumCheckActualCount++;
             if (info.isCulledByFrustum(this.frustum)) {
                 return;
             }
-            frustumCheckActualCount++;
 
             // visible, add to visible boxes
             // iterate the existing boxes to check if we can add to them
@@ -724,6 +726,7 @@ public class RenderSectionManager {
                     float newBoxMaxZ = Math.max(corners[1].z, maxZ);
 
                     // check that the box is still within the frustum
+                    frustumCheckBoxCount++;
                     if (frustum.testBox(newBoxMinX, newBoxMinY, newBoxMinZ, newBoxMaxX, newBoxMaxY, newBoxMaxZ) == Frustum.Visibility.INSIDE) {
                         // replace the box
                         corners[0].set(newBoxMinX, newBoxMinY, newBoxMinZ);
@@ -731,7 +734,6 @@ public class RenderSectionManager {
                         expanded = true;
                         break;
                     }
-                    frustumCheckBoxCount++;
                 }
 
                 // didn't combine with any box, add a new one if possible
@@ -743,7 +745,6 @@ public class RenderSectionManager {
             }
         }
 
-        frustumCheckPotentialCount++;
         info.setLastVisibleFrame(this.currentFrame);
         info.setCullingState(parent.getGraphInfo().getCullingState(), flow);
 
