@@ -43,6 +43,7 @@ import org.joml.Vector3f;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 public class RenderSectionManager {
     /**
@@ -104,16 +105,20 @@ public class RenderSectionManager {
 
     private ChunkRenderList chunkRenderList;
 
-    private static final int VISIBLE_BOX_COUNT = 2;
     private static final int EXPAND_BOX_WAIT = 3000;
-    private Vector3f[][] visibleBoxes = new Vector3f[VISIBLE_BOX_COUNT][2];
+    private static final int BOX_PURGE_INTERVAL = 30;
+    private static final float PURGE_BOX_THRESHOLD = 0.05f;
+    private Vector3f[][] visibleBoxes;
+    private int[] visibleBoxHits;
+    private int maxVisibleBoxes = 0;
     private int visibleBoxCount = 0;
     private int expandBoxWaitCount = 0;
 
     private int frustumCheckActualCount = 0;
     private int frustumCheckPotentialCount = 0;
     private int frustumCheckBoxCount = 0;
-    private int insideVisibleBoxCount = 0;
+    private int boxTestCount = 0;
+    private int clearedBoxes = 0;
 
     public RenderSectionManager(SodiumWorldRenderer worldRenderer, ClientWorld world, int renderDistance, CommandList commandList) {
         this.chunkRenderer = new RegionChunkRenderer(RenderDevice.INSTANCE, ChunkMeshFormats.COMPACT);
@@ -135,11 +140,6 @@ public class RenderSectionManager {
         }
 
         this.tracker = this.worldRenderer.getChunkTracker();
-
-        for (int i = 0; i < visibleBoxes.length; i++) {
-            this.visibleBoxes[i][0] = new Vector3f();
-            this.visibleBoxes[i][1] = new Vector3f();
-        }
     }
 
     public void reloadChunks(ChunkTracker tracker) {
@@ -532,6 +532,144 @@ public class RenderSectionManager {
         return this.useOcclusionCulling && from != null && !node.isVisibleThrough(from, to);
     }
 
+    private int updateCount = 0;
+
+    private static class AcceptableBox {
+        Vector3f[] box;
+        int hits;
+
+        private AcceptableBox(Vector3f[] box, int hits) {
+            this.box = box;
+            this.hits = hits;
+        }
+    }
+
+    private void combineBoxes(List<AcceptableBox> acceptableBoxes) {
+        // go through the acceptable boxes and see if they can be combined with others
+        Set<AcceptableBox> boxesToRemove = new HashSet<>();
+        for (AcceptableBox box : acceptableBoxes) {
+            if (boxesToRemove.contains(box)) continue;
+            Vector3f boxMin = box.box[0];
+            Vector3f boxMax = box.box[1];
+            for (AcceptableBox box2 : acceptableBoxes) {
+                if (box == box2) continue;
+                if (boxesToRemove.contains(box2)) continue;
+                Vector3f boxMin2 = box2.box[0];
+                Vector3f boxMax2 = box2.box[1];
+                float combinedMinX = Math.min(boxMin.x, boxMin2.x);
+                float combinedMinY = Math.min(boxMin.y, boxMin2.y);
+                float combinedMinZ = Math.min(boxMin.z, boxMin2.z);
+                float combinedMaxX = Math.max(boxMax.x, boxMax2.x);
+                float combinedMaxY = Math.max(boxMax.y, boxMax2.y);
+                float combinedMaxZ = Math.max(boxMax.z, boxMax2.z);
+                if (frustum.testBox(combinedMinX, combinedMinY, combinedMinZ, combinedMaxX, combinedMaxY, combinedMaxZ) == Frustum.Visibility.INSIDE) {
+                    boxMin.set(combinedMinX, combinedMinY, combinedMinZ);
+                    boxMax.set(combinedMaxX, combinedMaxY, combinedMaxZ);
+                    box.hits += box2.hits;
+
+                    // mark the other box for removal since it was combined into this one
+                    boxesToRemove.add(box2);
+                }
+            }
+        }
+
+        // remove the boxes that were combined
+        for (AcceptableBox box : boxesToRemove) {
+            acceptableBoxes.remove(box);
+        }
+    }
+
+    private void compactBoxes() {
+        // find the boxes that are within the frustum and only keep those
+        List<AcceptableBox> acceptableBoxes = new ArrayList<>();
+        for (int i = 0; i < visibleBoxCount; i++) {
+            Vector3f boxMin = visibleBoxes[i][0];
+            Vector3f boxMax = visibleBoxes[i][1];
+            if (frustum.testBox(boxMin.x, boxMin.y, boxMin.z, boxMax.x, boxMax.y, boxMax.z) == Frustum.Visibility.INSIDE) {
+                acceptableBoxes.add(new AcceptableBox(visibleBoxes[i], visibleBoxHits[i]));
+            }
+        }
+
+        // combine boxes that can be combined
+        // TODO: testing found that this doesn't actually seem to
+        // help in terms of avoided frustum tests
+        // combineBoxes(acceptableBoxes);
+
+        // sort by hits descending
+        acceptableBoxes.sort(Comparator.comparingInt(o -> -o.hits));
+
+        // update the number of actually present visible boxes,
+        // and make sure it doesn't exceed the number of allowed visible boxes
+        visibleBoxCount = Math.min(acceptableBoxes.size(), maxVisibleBoxes);
+
+        // clear boxes that contribute too few hits relative to the best boxes
+        if (visibleBoxCount >= 2 && ++updateCount >= BOX_PURGE_INTERVAL) {
+            int firstSecondAverage = visibleBoxCount >= 3 
+                ? (acceptableBoxes.get(0).hits + acceptableBoxes.get(1).hits) / 2
+                : acceptableBoxes.get(0).hits;
+            int hitThreshold = (int)(PURGE_BOX_THRESHOLD * firstSecondAverage);
+            int previousVisibleBoxCount = visibleBoxCount;
+            while ((float)acceptableBoxes.get(visibleBoxCount - 1).hits < hitThreshold) {
+                visibleBoxCount--;
+                if (visibleBoxCount == 0) break;
+            }
+            clearedBoxes = previousVisibleBoxCount - visibleBoxCount;
+
+            // reset the hit counters
+            for (AcceptableBox box : acceptableBoxes) {
+                box.hits = 0;
+            }
+
+            updateCount = 0;
+        }
+        for (int i = visibleBoxCount; i < maxVisibleBoxes; i++) {
+            visibleBoxHits[i] = 0;
+        }
+
+        // copy over as many sorted boxes as allowed
+        for (int i = 0; i < visibleBoxCount; i++) {
+            AcceptableBox box = acceptableBoxes.get(i);
+            visibleBoxes[i][0].set(box.box[0]);
+            visibleBoxes[i][1].set(box.box[1]);
+            visibleBoxHits[i] = box.hits;
+        }
+    }
+
+    private void initBoxTestState() {
+        // when the allowed number of boxes increases, recreate the array and copy over the boxes
+        int prevLength = visibleBoxes == null ? 0 : visibleBoxes.length;
+        if (maxVisibleBoxes > prevLength) {
+            Vector3f[][] newVisibleBoxes = new Vector3f[maxVisibleBoxes][2];
+            int[] newVisibleBotHits = new int[maxVisibleBoxes];
+            if (prevLength > 0) {
+                System.arraycopy(visibleBoxes, 0, newVisibleBoxes, 0, prevLength);
+                System.arraycopy(visibleBoxHits, 0, newVisibleBotHits, 0, prevLength);
+            }
+            visibleBoxes = newVisibleBoxes;
+            visibleBoxHits = newVisibleBotHits;
+            for (int i = prevLength; i < maxVisibleBoxes; i++) {
+                visibleBoxes[i][0] = new Vector3f();
+                visibleBoxes[i][1] = new Vector3f();
+                visibleBoxHits[i] = 0;
+            }
+        }
+
+        // update boxes with the frustum, combine if possible, sort by size,
+        // and update the number of visible boxes
+        compactBoxes();
+
+        // reset performance counters
+        frustumCheckActualCount = 0;
+        frustumCheckBoxCount = 0;
+        boxTestCount = 0;
+        frustumCheckPotentialCount = 0;
+
+        // reset the expand box wait count with random value up the maximum count,
+        // since the box expansion happens at a regular interval this ensures
+        // roughly random sections are considered for box expansion each frame
+        expandBoxWaitCount = (int)(Math.random() * EXPAND_BOX_WAIT);
+    }
+
     /**
      * Initializes the BFS queue state to search for visible chunks. If the camera
      * is in a section, only the current section is added to the queue. If the
@@ -542,73 +680,9 @@ public class RenderSectionManager {
         this.currentFrame = frame;
         this.frustum = frustum;
         this.useOcclusionCulling = MinecraftClient.getInstance().chunkCullingEnabled;
+        maxVisibleBoxes = 5;
 
-        // find the boxes that are within the frustum and only keep those
-        List<Vector3f[]> acceptableBoxes = new ArrayList<>();
-        for (int i = 0; i < visibleBoxCount; i++) {
-            Vector3f boxMin = visibleBoxes[i][0];
-            Vector3f boxMax = visibleBoxes[i][1];
-            if (frustum.testBox(boxMin.x, boxMin.y, boxMin.z, boxMax.x, boxMax.y, boxMax.z) == Frustum.Visibility.INSIDE) {
-                acceptableBoxes.add(visibleBoxes[i]);
-            }
-        }
-
-        // go through the acceptable boxes and see if they can be combined with others
-        Set<Vector3f[]> boxesToRemove = new HashSet<>();
-        for (Vector3f[] box : acceptableBoxes) {
-            if (boxesToRemove.contains(box)) continue;
-            Vector3f boxMin = box[0];
-            Vector3f boxMax = box[1];
-            for (Vector3f[] box2 : acceptableBoxes) {
-                if (box == box2) continue;
-                if (boxesToRemove.contains(box2)) continue;
-                Vector3f boxMin2 = box2[0];
-                Vector3f boxMax2 = box2[1];
-                float combinedMinX = Math.min(boxMin.x, boxMin2.x);
-                float combinedMinY = Math.min(boxMin.y, boxMin2.y);
-                float combinedMinZ = Math.min(boxMin.z, boxMin2.z);
-                float combinedMaxX = Math.max(boxMax.x, boxMax2.x);
-                float combinedMaxY = Math.max(boxMax.y, boxMax2.y);
-                float combinedMaxZ = Math.max(boxMax.z, boxMax2.z);
-                if (frustum.testBox(combinedMinX, combinedMinY, combinedMinZ, combinedMaxX, combinedMaxY, combinedMaxZ) == Frustum.Visibility.INSIDE) {
-                    boxMin.set(combinedMinX, combinedMinY, combinedMinZ);
-                    boxMax.set(combinedMaxX, combinedMaxY, combinedMaxZ);
-
-                    // invalidate the other box
-                    boxesToRemove.add(box2);
-                }
-            }
-        }
-
-        // remove the boxes that were combined
-        for (Vector3f[] box : boxesToRemove) {
-            acceptableBoxes.remove(box);
-        }
-
-        // sort by size descending
-        acceptableBoxes.sort((o1, o2) -> {
-            Vector3f boxMin1 = o1[0];
-            Vector3f boxMax1 = o1[1];
-            Vector3f boxMin2 = o2[0];
-            Vector3f boxMax2 = o2[1];
-            float size1 = (boxMax1.x - boxMin1.x) * (boxMax1.y - boxMin1.y) * (boxMax1.z - boxMin1.z);
-            float size2 = (boxMax2.x - boxMin2.x) * (boxMax2.y - boxMin2.y) * (boxMax2.z - boxMin2.z);
-            return Float.compare(size2, size1);
-        });
-
-        // write back into the array
-        visibleBoxCount = acceptableBoxes.size();
-        for (int i = 0; i < visibleBoxCount; i++) {
-            visibleBoxes[i] = acceptableBoxes.get(i);
-        }
-
-        // visibleBoxCount = 0;
-        frustumCheckActualCount = 0;
-        frustumCheckBoxCount = 0;
-        insideVisibleBoxCount = 0;
-        frustumCheckPotentialCount = 0;
-
-        expandBoxWaitCount = (int)(Math.random() * EXPAND_BOX_WAIT);
+        initBoxTestState();
 
         this.iterationQueue.clear();
 
@@ -672,8 +746,9 @@ public class RenderSectionManager {
             Vector3f[] corners = visibleBoxes[i];
             Vector3f min = corners[0];
             Vector3f max = corners[1];
+            boxTestCount++;
             if (min.x <= x && x < max.x && min.y <= y && y < max.y && min.z <= z && z < max.z) {
-                insideVisibleBoxCount++;
+                visibleBoxHits[i]++;
                 return true;
             }
         }
@@ -702,15 +777,17 @@ public class RenderSectionManager {
                 // replace the box
                 corners[0].set(newBoxMinX, newBoxMinY, newBoxMinZ);
                 corners[1].set(newBoxMaxX, newBoxMaxY, newBoxMaxZ);
+                visibleBoxHits[i]++;
                 expanded = true;
                 break;
             }
         }
 
         // didn't combine with any box, add a new one if possible
-        if (!expanded && visibleBoxCount < visibleBoxes.length) {
+        if (!expanded && visibleBoxCount < maxVisibleBoxes) {
             visibleBoxes[visibleBoxCount][0].set(x, y, z);
             visibleBoxes[visibleBoxCount][1].set(maxX, maxY, maxZ);
+            visibleBoxHits[visibleBoxCount] = 1;
             visibleBoxCount++;
         }
     }
@@ -829,12 +906,19 @@ public class RenderSectionManager {
         list.add(String.format("Device buffer objects: %d", count));
         list.add(String.format("Device memory: %d/%d MiB", MathUtil.toMib(deviceUsed), MathUtil.toMib(deviceAllocated)));
         list.add(String.format("Staging buffer: %s", this.regions.getStagingBuffer().toString()));
-        list.add(String.format("%s Visible box count", this.visibleBoxCount));
-        list.add(String.format("%s chunk frustum checks actual", this.frustumCheckActualCount));
-        list.add(String.format("%s total frustum checks", this.frustumCheckActualCount + this.frustumCheckBoxCount));
-        list.add(String.format("%s chunk frustum checks potential", this.frustumCheckPotentialCount));
-        list.add(String.format("%s (%d%%) chunk frustum checks avoided",  this.insideVisibleBoxCount, 100 * this.insideVisibleBoxCount / this.frustumCheckPotentialCount));
-        list.add(String.format("%s additional box frustum checks", this.frustumCheckBoxCount));
+
+        int totalFrustumChecks = frustumCheckActualCount + frustumCheckBoxCount;
+        list.add(String.format("%s Visible box count", visibleBoxCount));
+        list.add(String.format("%s chunk frustum checks actual", frustumCheckActualCount));
+        list.add(String.format("%s total frustum checks", totalFrustumChecks));
+        list.add(String.format("%s chunk frustum checks potential", frustumCheckPotentialCount));
+        list.add(String.format("%d%% fewer frustum checks", 100 - 100 * totalFrustumChecks / frustumCheckPotentialCount));
+        list.add(String.format("%s additional box frustum checks", frustumCheckBoxCount));
+        list.add(String.format("%s box tests", boxTestCount));
+        list.add(String.format("%s boxes cleared",clearedBoxes));
+        for (int i = 0; i < visibleBoxCount; i++) {
+            list.add(String.format("%s hits on box %d", visibleBoxHits[i], i));
+        }
         return list;
     }
 }
