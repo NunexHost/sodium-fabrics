@@ -667,12 +667,85 @@ public class RenderSectionManager {
         }
     }
 
+    private boolean isVisibleInBox(float x, float y, float z) {
+        for (int i = 0; i < visibleBoxCount; i++) {
+            Vector3f[] corners = visibleBoxes[i];
+            Vector3f min = corners[0];
+            Vector3f max = corners[1];
+            if (min.x <= x && x < max.x && min.y <= y && y < max.y && min.z <= z && z < max.z) {
+                insideVisibleBoxCount++;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void expandBoxWithSection(float x, float y, float z) {
+        float maxX = x + 16f;
+        float maxY = y + 16f;
+        float maxZ = z + 16f;
+        boolean expanded = false;
+        for (int i = 0; i < visibleBoxCount; i++) {
+            Vector3f[] corners = visibleBoxes[i];
+
+            // combine with this box
+            float newBoxMinX = Math.min(corners[0].x, x);
+            float newBoxMinY = Math.min(corners[0].y, y);
+            float newBoxMinZ = Math.min(corners[0].z, z);
+            float newBoxMaxX = Math.max(corners[1].x, maxX);
+            float newBoxMaxY = Math.max(corners[1].y, maxY);
+            float newBoxMaxZ = Math.max(corners[1].z, maxZ);
+
+            // check that the box is still within the frustum
+            frustumCheckBoxCount++;
+            if (frustum.testBox(newBoxMinX, newBoxMinY, newBoxMinZ, newBoxMaxX, newBoxMaxY, newBoxMaxZ) == Frustum.Visibility.INSIDE) {
+                // replace the box
+                corners[0].set(newBoxMinX, newBoxMinY, newBoxMinZ);
+                corners[1].set(newBoxMaxX, newBoxMaxY, newBoxMaxZ);
+                expanded = true;
+                break;
+            }
+        }
+
+        // didn't combine with any box, add a new one if possible
+        if (!expanded && visibleBoxCount < visibleBoxes.length) {
+            visibleBoxes[visibleBoxCount][0].set(x, y, z);
+            visibleBoxes[visibleBoxCount][1].set(maxX, maxY, maxZ);
+            visibleBoxCount++;
+        }
+    }
+
+    private boolean isFrustumCulled(RenderSection render) {
+        frustumCheckPotentialCount++;
+
+        float x = render.getOriginX();
+        float y = render.getOriginY();
+        float z = render.getOriginZ();
+
+        // check if within a visible box to avoid checking the frustum
+        if (!isVisibleInBox(x, y, z)) {
+            frustumCheckActualCount++;
+            // if (info.isCulledByFrustum(this.frustum)) {
+            if(!frustum.isBoxVisible(x, y, z, x + 16.0f, y + 16.0f, z + 16.0f)) {
+                return true;
+            }
+
+            // visible, add to visible boxes
+            // iterate the existing boxes to check if we can add to them
+            if (++expandBoxWaitCount > EXPAND_BOX_WAIT) {
+                expandBoxWaitCount = 0;
+                expandBoxWithSection(x, y, z);
+            }
+        }
+        return false;
+    }
+
     /**
      * Adds a render section to the BFS queue. It checks that the section hasn't
      * already been processed as visible and that it's still inside the frustum.
      * Before adding it to the queue, the last visible frame is updated so that it
      * isn't added again in this frame if it has already been determined to be
-     * visible and the culling state is updated with the culling state of the parent
+     * visible. The culling state is updated with the culling state of the parent
      * section that led to this section being added to the queue.
      */
     private void bfsEnqueue(ChunkRenderListBuilder list, RenderSection parent, RenderSection render, Direction flow) {
@@ -682,67 +755,8 @@ public class RenderSectionManager {
             return;
         }
 
-        frustumCheckPotentialCount++;
-
-        // check if within a visible box to avoid checking the frustum
-        boolean insideVisibleBox = false;
-        float x = render.getOriginX();
-        float y = render.getOriginY();
-        float z = render.getOriginZ();
-        for (int i = 0; i < visibleBoxCount; i++) {
-            Vector3f[] corners = visibleBoxes[i];
-            Vector3f min = corners[0];
-            Vector3f max = corners[1];
-            if (min.x <= x && x < max.x && min.y <= y && y < max.y && min.z <= z && z < max.z) {
-                insideVisibleBox = true;
-                insideVisibleBoxCount++;
-                break;
-            }
-        }
-
-        if (!insideVisibleBox) {
-            frustumCheckActualCount++;
-            if (info.isCulledByFrustum(this.frustum)) {
-                return;
-            }
-
-            // visible, add to visible boxes
-            // iterate the existing boxes to check if we can add to them
-            if (++expandBoxWaitCount > EXPAND_BOX_WAIT) {
-                expandBoxWaitCount = 0;
-                float maxX = x + 16f;
-                float maxY = y + 16f;
-                float maxZ = z + 16f;
-                boolean expanded = false;
-                for (int i = 0; i < visibleBoxCount; i++) {
-                    Vector3f[] corners = visibleBoxes[i];
-
-                    // combine with this box
-                    float newBoxMinX = Math.min(corners[0].x, x);
-                    float newBoxMinY = Math.min(corners[0].y, y);
-                    float newBoxMinZ = Math.min(corners[0].z, z);
-                    float newBoxMaxX = Math.max(corners[1].x, maxX);
-                    float newBoxMaxY = Math.max(corners[1].y, maxY);
-                    float newBoxMaxZ = Math.max(corners[1].z, maxZ);
-
-                    // check that the box is still within the frustum
-                    frustumCheckBoxCount++;
-                    if (frustum.testBox(newBoxMinX, newBoxMinY, newBoxMinZ, newBoxMaxX, newBoxMaxY, newBoxMaxZ) == Frustum.Visibility.INSIDE) {
-                        // replace the box
-                        corners[0].set(newBoxMinX, newBoxMinY, newBoxMinZ);
-                        corners[1].set(newBoxMaxX, newBoxMaxY, newBoxMaxZ);
-                        expanded = true;
-                        break;
-                    }
-                }
-
-                // didn't combine with any box, add a new one if possible
-                if (!expanded && visibleBoxCount < visibleBoxes.length) {
-                    visibleBoxes[visibleBoxCount][0].set(x, y, z);
-                    visibleBoxes[visibleBoxCount][1].set(maxX, maxY, maxZ);
-                    visibleBoxCount++;
-                }
-            }
+        if (isFrustumCulled(render)) {
+            return;
         }
 
         info.setLastVisibleFrame(this.currentFrame);
