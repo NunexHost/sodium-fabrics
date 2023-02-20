@@ -43,7 +43,6 @@ import org.joml.Vector3f;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 public class RenderSectionManager {
     /**
@@ -110,7 +109,7 @@ public class RenderSectionManager {
     private static final float PURGE_BOX_THRESHOLD = 0.05f;
     private Vector3f[][] visibleBoxes;
     private int[] visibleBoxHits;
-    private int maxVisibleBoxes = 0;
+    private int maxVisibleBoxes = 5;
     private int visibleBoxCount = 0;
     private int expandBoxWaitCount = 0;
 
@@ -680,7 +679,6 @@ public class RenderSectionManager {
         this.currentFrame = frame;
         this.frustum = frustum;
         this.useOcclusionCulling = MinecraftClient.getInstance().chunkCullingEnabled;
-        maxVisibleBoxes = 5;
 
         initBoxTestState();
 
