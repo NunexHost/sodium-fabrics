@@ -543,41 +543,6 @@ public class RenderSectionManager {
         }
     }
 
-    private void combineBoxes(List<AcceptableBox> acceptableBoxes) {
-        // go through the acceptable boxes and see if they can be combined with others
-        Set<AcceptableBox> boxesToRemove = new HashSet<>();
-        for (AcceptableBox box : acceptableBoxes) {
-            if (boxesToRemove.contains(box)) continue;
-            Vector3f boxMin = box.box[0];
-            Vector3f boxMax = box.box[1];
-            for (AcceptableBox box2 : acceptableBoxes) {
-                if (box == box2) continue;
-                if (boxesToRemove.contains(box2)) continue;
-                Vector3f boxMin2 = box2.box[0];
-                Vector3f boxMax2 = box2.box[1];
-                float combinedMinX = Math.min(boxMin.x, boxMin2.x);
-                float combinedMinY = Math.min(boxMin.y, boxMin2.y);
-                float combinedMinZ = Math.min(boxMin.z, boxMin2.z);
-                float combinedMaxX = Math.max(boxMax.x, boxMax2.x);
-                float combinedMaxY = Math.max(boxMax.y, boxMax2.y);
-                float combinedMaxZ = Math.max(boxMax.z, boxMax2.z);
-                if (frustum.testBox(combinedMinX, combinedMinY, combinedMinZ, combinedMaxX, combinedMaxY, combinedMaxZ) == Frustum.Visibility.INSIDE) {
-                    boxMin.set(combinedMinX, combinedMinY, combinedMinZ);
-                    boxMax.set(combinedMaxX, combinedMaxY, combinedMaxZ);
-                    box.hits += box2.hits;
-
-                    // mark the other box for removal since it was combined into this one
-                    boxesToRemove.add(box2);
-                }
-            }
-        }
-
-        // remove the boxes that were combined
-        for (AcceptableBox box : boxesToRemove) {
-            acceptableBoxes.remove(box);
-        }
-    }
-
     private void compactBoxes() {
         // find the boxes that are within the frustum and only keep those
         List<AcceptableBox> acceptableBoxes = new ArrayList<>();
@@ -588,11 +553,6 @@ public class RenderSectionManager {
                 acceptableBoxes.add(new AcceptableBox(visibleBoxes[i], visibleBoxHits[i]));
             }
         }
-
-        // combine boxes that can be combined
-        // TODO: testing found that this doesn't actually seem to
-        // help in terms of avoided frustum tests
-        // combineBoxes(acceptableBoxes);
 
         // sort by hits descending
         acceptableBoxes.sort(Comparator.comparingInt(o -> -o.hits));
