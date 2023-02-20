@@ -104,7 +104,7 @@ public class RenderSectionManager {
 
     private ChunkRenderList chunkRenderList;
 
-    private static final int EXPAND_BOX_WAIT = 3000;
+    private static final int EXPAND_BOX_WAIT = 1000;
     private static final int BOX_PURGE_INTERVAL = 30;
     private static final float PURGE_BOX_THRESHOLD = 0.05f;
     private Vector3f[][] visibleBoxes;
