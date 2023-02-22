@@ -520,6 +520,7 @@ public class RenderSectionManager {
     }
 
     /**
+     * First checks with canCull if the node has been searched in this direction already.
      * Checks if the given chunk graph info for a node (a section) in the graph
      * allows visibility to traverse through it from a direction to another.
      */
