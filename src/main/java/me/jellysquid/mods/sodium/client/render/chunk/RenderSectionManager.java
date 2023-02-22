@@ -543,13 +543,28 @@ public class RenderSectionManager {
         }
     }
 
+     /**
+     * Tests if the given box is acceptable for box testing with the given frustum.
+     * It tests if the box that is 16 blocks smaller in each of the 6 directions is
+     * inside the frustum. Since box tests only need to ensure they contain only
+     * boxes that intersect with the frustum this is sufficient. Testing a smaller
+     * box allows the boxes to become bigger and intersect with the frustum, thus
+     * covering more sections that can be efficiently included. Testing if the box
+     * intersects with the frustum doesn't work, since it could then be for example
+     * mostly outside the frustum and just touch it, allowing sections outside the
+     * frustum to be wrongly included.
+     */
+    private boolean boxIsAcceptable(Frustum frustum, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        return frustum.testBox(minX + 16f, minY + 16f, minZ + 16f, maxX - 16f, maxY - 16f, maxZ - 16f) == Frustum.Visibility.INSIDE;
+    }
+
     private void compactBoxes() {
         // find the boxes that are within the frustum and only keep those
         List<AcceptableBox> acceptableBoxes = new ArrayList<>();
         for (int i = 0; i < visibleBoxCount; i++) {
             Vector3f boxMin = visibleBoxes[i][0];
             Vector3f boxMax = visibleBoxes[i][1];
-            if (frustum.testBox(boxMin.x, boxMin.y, boxMin.z, boxMax.x, boxMax.y, boxMax.z) == Frustum.Visibility.INSIDE) {
+            if (boxIsAcceptable(frustum, boxMin.x, boxMin.y, boxMin.z, boxMax.x, boxMax.y, boxMax.z)) {
                 acceptableBoxes.add(new AcceptableBox(visibleBoxes[i], visibleBoxHits[i]));
             }
         }
@@ -731,7 +746,7 @@ public class RenderSectionManager {
 
             // check that the box is still within the frustum
             frustumCheckBoxCount++;
-            if (frustum.testBox(newBoxMinX, newBoxMinY, newBoxMinZ, newBoxMaxX, newBoxMaxY, newBoxMaxZ) == Frustum.Visibility.INSIDE) {
+            if (boxIsAcceptable(frustum, newBoxMinX, newBoxMinY, newBoxMinZ, newBoxMaxX, newBoxMaxY, newBoxMaxZ)) {
                 // replace the box
                 corners[0].set(newBoxMinX, newBoxMinY, newBoxMinZ);
                 corners[1].set(newBoxMaxX, newBoxMaxY, newBoxMaxZ);
