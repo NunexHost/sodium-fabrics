@@ -67,8 +67,8 @@ public class Octree {
         section = null;
     }
 
-    public static Octree root() {
-        return new Octree(0, 0, 0, 0);
+    public static Octree newRoot() {
+        return new Octree(32, 0, 0, 0);
     }
 
     public boolean contains(int x, int y, int z) {
@@ -82,7 +82,9 @@ public class Octree {
     }
 
     private int getIndexFor(int x, int y, int z) {
-        return (x & selector) | (y & selector) << 1 | (z & selector) << 2;
+        return ((x & selector) == 0 ? 0 : 1)
+                | ((y & selector) == 0 ? 0 : 1) << 1
+                | ((z & selector) == 0 ? 0 : 1) << 2;
     }
 
     private int getIndexFor(Octree tree) {

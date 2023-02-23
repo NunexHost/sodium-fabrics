@@ -35,14 +35,20 @@ public class OctreeTest {
         tree.setSection(rs(0, 2, 0));
         assertEquals(2, tree.ignoredBits);
         assertEquals(2, tree.ownChildCount);
-        assertEquals(1, tree.children[4].ignoredBits);
-        assertEquals(1, tree.children[4].ownChildCount);
-        assertEquals(0, tree.children[4].children[0].ignoredBits);
-        assertEquals(1, tree.children[4].children[0].ownChildCount);
+        assertEquals(1, tree.children[2].ignoredBits);
+        assertEquals(1, tree.children[2].ownChildCount);
+        assertEquals(0, tree.children[2].children[0].ignoredBits);
+        assertEquals(1, tree.children[2].children[0].ownChildCount);
 
         RenderSection rs2 = rs(0, 0, 0);
         tree.setSection(rs2);
         assertEquals(rs2, tree.children[0].children[0].section);
+    }
+
+    @Test
+    void testSetLargeIndex() {
+        Octree tree = Octree.newRoot();
+        tree.setSection(rs(100, 100, 100));
     }
 
     @Test
@@ -70,29 +76,35 @@ public class OctreeTest {
 
         assertEquals(2, tree.ownChildCount);
         assertEquals(2, tree.children[0].ownChildCount);
-        assertEquals(1, tree.children[4].ownChildCount);
+        assertEquals(1, tree.children[2].ownChildCount);
         assertEquals(1, tree.children[0].children[0].ownChildCount);
         assertEquals(1, tree.children[0].children[1].ownChildCount);
-        assertEquals(1, tree.children[4].children[0].ownChildCount);
+        assertEquals(1, tree.children[2].children[0].ownChildCount);
 
         tree.removeSection(rs(0, 0, 0));
         assertEquals(2, tree.ownChildCount);
         assertEquals(1, tree.children[0].ownChildCount);
-        assertEquals(1, tree.children[4].ownChildCount);
+        assertEquals(1, tree.children[2].ownChildCount);
         assertNull(tree.children[0].children[0]);
         assertEquals(1, tree.children[0].children[1].ownChildCount);
-        assertEquals(1, tree.children[4].children[0].ownChildCount);
+        assertEquals(1, tree.children[2].children[0].ownChildCount);
 
         tree.removeSection(rs(0, 2, 0));
         assertEquals(1, tree.ownChildCount);
         assertEquals(1, tree.children[0].ownChildCount);
-        assertNull(tree.children[4]);
+        assertNull(tree.children[2]);
         assertNull(tree.children[0].children[0]);
         assertEquals(1, tree.children[0].children[1].ownChildCount);
 
         tree.removeSection(rs(1, 0, 0));
         assertEquals(0, tree.ownChildCount);
         assertNull(tree.children[0]);
-        assertNull(tree.children[4]);
+        assertNull(tree.children[2]);
+    }
+
+    @Test
+    void testRoot() {
+        Octree root = Octree.newRoot();
+        assertEquals(32, root.ignoredBits);
     }
 }
