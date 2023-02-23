@@ -145,18 +145,38 @@ public class Octree {
         } else {
             // find the index for the section
             int index = getIndexFor(x, y, z);
-            Octree existingChild = children[index];
+            Octree child = children[index];
 
             // if this child does exist, remove the section from it
-            if (existingChild != null) {
-                existingChild.removeSection(toRemove);
+            if (child != null) {
+                child.removeSection(toRemove);
 
                 // and remove the child if it's now empty
-                if (existingChild.ownChildCount == 0) {
+                if (child.ownChildCount == 0) {
                     children[index] = null;
                     ownChildCount--;
                 }
             }
+        }
+    }
+
+    boolean hasSectionPosition(RenderSection toFind) {
+        if (toFind == null) {
+            return false;
+        }
+        int x = toFind.getChunkX();
+        int y = toFind.getChunkY();
+        int z = toFind.getChunkZ();
+
+        if (!contains(x, y, z)) {
+            return false;
+        } else if (ignoredBits == 0) {
+            return true;
+        } else {
+            // find the index for the section
+            int index = getIndexFor(x, y, z);
+            Octree child = children[index];
+            return child != null && child.hasSectionPosition(toFind);
         }
     }
 }
