@@ -181,39 +181,6 @@ public class RenderSectionManager {
         }
     }
 
-    /**
-     * This is the main BFS search loop. It iterates over the queue of chunks to be
-     * processed until it is empty. For each iterated chunk it checks adjacent
-     * chunks in all directions that are connected visibly and schedules them if
-     * they are within the render distance and not frustum culled.
-     * {@code bfsEnqueue} handles updating the section's culling state and the
-     * frustum check.
-     */
-    private void iterateChunks(ChunkRenderListBuilder list, Camera camera, Frustum frustum, int frame, boolean spectator) {
-        this.initSearch(list, camera, frustum, frame, spectator);
-
-        ChunkGraphIterationQueue queue = this.iterationQueue;
-
-        for (int i = 0; i < queue.size(); i++) {
-            RenderSection section = queue.getRender(i);
-            Direction flow = queue.getDirection(i);
-
-            this.schedulePendingUpdates(section);
-
-            for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
-                if (this.isCulled(section.getGraphInfo(), flow, dir)) {
-                    continue;
-                }
-
-                RenderSection adj = section.getAdjacent(dir);
-
-                if (adj != null && this.isWithinRenderDistance(adj)) {
-                    this.bfsEnqueue(list, section, adj, DirectionUtil.getOpposite(dir));
-                }
-            }
-        }
-    }
-
     private void schedulePendingUpdates(RenderSection section) {
         if (section.getPendingUpdate() == null || !this.tracker.hasMergedFlags(section.getChunkX(), section.getChunkZ(), ChunkStatus.FLAG_ALL)) {
             return;
@@ -696,7 +663,7 @@ public class RenderSectionManager {
 
                     ChunkGraphInfo info = render.getGraphInfo();
 
-                    if (info.isCulledByFrustum(frustum)) {
+                    if (isFrustumCulled(render)) {
                         continue;
                     }
 
@@ -776,7 +743,6 @@ public class RenderSectionManager {
         // check if within a visible box to avoid checking the frustum
         if (!isVisibleInBox(x, y, z)) {
             frustumCheckActualCount++;
-            // if (info.isCulledByFrustum(this.frustum)) {
             if(!frustum.isBoxVisible(x, y, z, x + 16.0f, y + 16.0f, z + 16.0f)) {
                 return true;
             }
@@ -789,6 +755,39 @@ public class RenderSectionManager {
             }
         }
         return false;
+    }
+
+    /**
+     * This is the main BFS search loop. It iterates over the queue of chunks to be
+     * processed until it is empty. For each iterated chunk it checks adjacent
+     * chunks in all directions that are connected visibly and schedules them if
+     * they are within the render distance and not frustum culled.
+     * {@code bfsEnqueue} handles updating the section's culling state and the
+     * frustum check.
+     */
+    private void iterateChunks(ChunkRenderListBuilder list, Camera camera, Frustum frustum, int frame, boolean spectator) {
+        this.initSearch(list, camera, frustum, frame, spectator);
+
+        ChunkGraphIterationQueue queue = this.iterationQueue;
+
+        for (int i = 0; i < queue.size(); i++) {
+            RenderSection section = queue.getRender(i);
+            Direction flow = queue.getDirection(i);
+
+            this.schedulePendingUpdates(section);
+
+            for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
+                if (this.isCulled(section.getGraphInfo(), flow, dir)) {
+                    continue;
+                }
+
+                RenderSection adj = section.getAdjacent(dir);
+
+                if (adj != null && this.isWithinRenderDistance(adj)) {
+                    this.bfsEnqueue(list, section, adj, DirectionUtil.getOpposite(dir));
+                }
+            }
+        }
     }
 
     /**
