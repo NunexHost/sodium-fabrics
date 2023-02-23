@@ -1,5 +1,7 @@
 package me.jellysquid.mods.sodium.client.render.chunk;
 
+import java.util.Objects;
+
 /**
  * An octree node.
  * 
@@ -30,6 +32,8 @@ public class Octree {
     public final int x, y, z;
 
     public Octree(RenderSection section) {
+        Objects.requireNonNull(section);
+
         ignoredBits = 0;
         filter = -1;
         selector = 0; // doesn't matter for leaf nodes
@@ -48,7 +52,8 @@ public class Octree {
             throw new IllegalArgumentException("ignoredBits must be between 0 and 32");
         }
         if (ignoredBits == 0) {
-            throw new IllegalArgumentException("ignoredBits is only 0 for leaf nodes which must be constructed as such");
+            throw new IllegalArgumentException(
+                    "ignoredBits is only 0 for leaf nodes which must be constructed as such");
         }
         this.ignoredBits = ignoredBits;
         filter = ignoredBits == 32 ? 0 : -1 << ignoredBits;
@@ -98,6 +103,7 @@ public class Octree {
 
         if (ignoredBits == 0) {
             section = toSet;
+            ownChildCount = 1;
         } else {
             // find the index for the section
             int index = getIndexFor(x, y, z);
@@ -117,6 +123,39 @@ public class Octree {
                 }
                 children[index] = child;
                 ownChildCount++;
+            }
+        }
+    }
+
+    void removeSection(RenderSection toRemove) {
+        if (toRemove == null) {
+            return;
+        }
+        int x = toRemove.getChunkX();
+        int y = toRemove.getChunkY();
+        int z = toRemove.getChunkZ();
+
+        if (!contains(x, y, z)) {
+            throw new IllegalArgumentException("Section " + toRemove + " is not contained in " + this);
+        }
+
+        if (ignoredBits == 0) {
+            section = null;
+            ownChildCount = 0;
+        } else {
+            // find the index for the section
+            int index = getIndexFor(x, y, z);
+            Octree existingChild = children[index];
+
+            // if this child does exist, remove the section from it
+            if (existingChild != null) {
+                existingChild.removeSection(toRemove);
+
+                // and remove the child if it's now empty
+                if (existingChild.ownChildCount == 0) {
+                    children[index] = null;
+                    ownChildCount--;
+                }
             }
         }
     }

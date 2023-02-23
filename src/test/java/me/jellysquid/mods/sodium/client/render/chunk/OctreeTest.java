@@ -60,4 +60,39 @@ public class OctreeTest {
         assertFalse(tree.contains(0, 0, 4));
         assertFalse(tree.contains(0, 0, -1));
     }
+
+    @Test
+    void testRemoveSection() {
+        Octree tree = new Octree(2, 0, 0, 0);
+        tree.setSection(rs(0, 0, 0));
+        tree.setSection(rs(1, 0, 0));
+        tree.setSection(rs(0, 2, 0));
+
+        assertEquals(2, tree.ownChildCount);
+        assertEquals(2, tree.children[0].ownChildCount);
+        assertEquals(1, tree.children[4].ownChildCount);
+        assertEquals(1, tree.children[0].children[0].ownChildCount);
+        assertEquals(1, tree.children[0].children[1].ownChildCount);
+        assertEquals(1, tree.children[4].children[0].ownChildCount);
+
+        tree.removeSection(rs(0, 0, 0));
+        assertEquals(2, tree.ownChildCount);
+        assertEquals(1, tree.children[0].ownChildCount);
+        assertEquals(1, tree.children[4].ownChildCount);
+        assertNull(tree.children[0].children[0]);
+        assertEquals(1, tree.children[0].children[1].ownChildCount);
+        assertEquals(1, tree.children[4].children[0].ownChildCount);
+
+        tree.removeSection(rs(0, 2, 0));
+        assertEquals(1, tree.ownChildCount);
+        assertEquals(1, tree.children[0].ownChildCount);
+        assertNull(tree.children[4]);
+        assertNull(tree.children[0].children[0]);
+        assertEquals(1, tree.children[0].children[1].ownChildCount);
+
+        tree.removeSection(rs(1, 0, 0));
+        assertEquals(0, tree.ownChildCount);
+        assertNull(tree.children[0]);
+        assertNull(tree.children[4]);
+    }
 }
