@@ -75,37 +75,38 @@ public class Octree {
         int y = toSet.getChunkY();
         int z = toSet.getChunkZ();
 
-        if (contains(x, y, z)) {
-            if (ignoredBits == 0) {
-                section = toSet;
-            } else {
-                if (children == null) {
-                    children = new Octree[8];
-                }
-
-                // find the index for the section
-                int index = getIndexFor(x, y, z);
-                Octree existingChild = children[index];
-
-                // if there is already a child, add the section to it instead of directly
-                if (existingChild != null) {
-                    existingChild.setSection(toSet);
-                } else {
-                    // crewate new nested nodes until the section fits (reaches the correct level)
-                    Octree child = new Octree(toSet);
-                    while (child.ignoredBits + 1 != ignoredBits) {
-                        Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z);
-                        newParent.children = new Octree[8];
-                        newParent.children[newParent.getIndexFor(child)] = child;
-                        newParent.ownChildCount = 1;
-                        child = newParent;
-                    }
-                    children[index] = child;
-                    ownChildCount++;
-                }
-            }
-        } else {
+        if (!contains(x, y, z)) {
             throw new IllegalArgumentException("Section " + toSet + " is not contained in " + this);
         }
+
+        if (ignoredBits == 0) {
+            section = toSet;
+        } else {
+            if (children == null) {
+                children = new Octree[8];
+            }
+
+            // find the index for the section
+            int index = getIndexFor(x, y, z);
+            Octree existingChild = children[index];
+
+            // if there is already a child, add the section to it instead of directly
+            if (existingChild != null) {
+                existingChild.setSection(toSet);
+            } else {
+                // crewate new nested nodes until the section fits (reaches the correct level)
+                Octree child = new Octree(toSet);
+                while (child.ignoredBits + 1 != ignoredBits) {
+                    Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z);
+                    newParent.children = new Octree[8];
+                    newParent.children[newParent.getIndexFor(child)] = child;
+                    newParent.ownChildCount = 1;
+                    child = newParent;
+                }
+                children[index] = child;
+                ownChildCount++;
+            }
+        }
+
     }
 }

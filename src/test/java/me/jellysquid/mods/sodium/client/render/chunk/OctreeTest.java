@@ -55,5 +55,9 @@ public class OctreeTest {
                 }
             }
         }
+        assertFalse(tree.contains(4, 0, 0));
+        assertFalse(tree.contains(0, 4, 0));
+        assertFalse(tree.contains(0, 0, 4));
+        assertFalse(tree.contains(0, 0, -1));
     }
 }
