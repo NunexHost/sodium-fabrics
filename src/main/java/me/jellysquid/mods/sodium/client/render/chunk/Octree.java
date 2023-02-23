@@ -20,50 +20,67 @@ package me.jellysquid.mods.sodium.client.render.chunk;
  * face.
  */
 public class Octree {
-    Octree[] children; // children can be null
-    int ownChildCount = 0;
-    RenderSection section; // section can be null
+    public final Octree[] children; // children can be null
+    public int ownChildCount = 0;
+    public RenderSection section; // section can be null
 
-    final int ignoredBits;
-    final int filter;
-    final int selector;
-    final int x, y, z;
+    public final int ignoredBits;
+    public final int filter;
+    public final int selector;
+    public final int x, y, z;
 
-    Octree(RenderSection section) {
-        this(0, section.getChunkX(), section.getChunkY(), section.getChunkZ());
+    public Octree(RenderSection section) {
+        ignoredBits = 0;
+        filter = -1;
+        selector = 0; // doesn't matter for leaf nodes
+
+        x = section.getChunkX();
+        y = section.getChunkY();
+        z = section.getChunkZ();
+
+        children = null;
         this.section = section;
         ownChildCount = 1;
     }
 
-    Octree(int ignoredBits, int x, int y, int z) {
+    public Octree(int ignoredBits, int x, int y, int z) {
+        if (ignoredBits < 0 || ignoredBits > 32) {
+            throw new IllegalArgumentException("ignoredBits must be between 0 and 32");
+        }
+        if (ignoredBits == 0) {
+            throw new IllegalArgumentException("ignoredBits is only 0 for leaf nodes which must be constructed as such");
+        }
         this.ignoredBits = ignoredBits;
         filter = ignoredBits == 32 ? 0 : -1 << ignoredBits;
-        selector = 1 << (ignoredBits - 1); // may only be used if ignoredBits > 0
+        selector = 1 << (ignoredBits - 1);
 
         this.x = x & filter;
         this.y = y & filter;
         this.z = z & filter;
+
+        children = new Octree[8];
+        section = null;
     }
 
     public static Octree root() {
         return new Octree(0, 0, 0, 0);
     }
 
-    boolean contains(int x, int y, int z) {
+    public boolean contains(int x, int y, int z) {
         return (x & filter) == this.x
                 && (y & filter) == this.y
                 && (z & filter) == this.z;
     }
 
-    boolean contains(Octree tree) {
+    public boolean contains(Octree tree) {
         return contains(tree.x, tree.y, tree.z);
     }
 
-    int getIndexFor(int x, int y, int z) {
+    private int getIndexFor(int x, int y, int z) {
         return (x & selector) | (y & selector) << 1 | (z & selector) << 2;
     }
 
-    int getIndexFor(Octree tree) {
+    private int getIndexFor(Octree tree) {
         return getIndexFor(tree.x, tree.y, tree.z);
     }
 
@@ -82,10 +99,6 @@ public class Octree {
         if (ignoredBits == 0) {
             section = toSet;
         } else {
-            if (children == null) {
-                children = new Octree[8];
-            }
-
             // find the index for the section
             int index = getIndexFor(x, y, z);
             Octree existingChild = children[index];
@@ -98,7 +111,6 @@ public class Octree {
                 Octree child = new Octree(toSet);
                 while (child.ignoredBits + 1 != ignoredBits) {
                     Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z);
-                    newParent.children = new Octree[8];
                     newParent.children[newParent.getIndexFor(child)] = child;
                     newParent.ownChildCount = 1;
                     child = newParent;
@@ -107,6 +119,5 @@ public class Octree {
                 ownChildCount++;
             }
         }
-
     }
 }
