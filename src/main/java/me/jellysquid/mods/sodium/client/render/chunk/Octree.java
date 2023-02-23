@@ -21,24 +21,32 @@ package me.jellysquid.mods.sodium.client.render.chunk;
  */
 public class Octree {
     Octree[] children; // children can be null
+    int ownChildCount = 0;
     RenderSection section; // section can be null
 
-    int ignoredBits;
-    int filter;
-    int selector;
-    int x, y, z;
+    final int ignoredBits;
+    final int filter;
+    final int selector;
+    final int x, y, z;
 
     Octree(RenderSection section) {
-        addSection(section);
+        this(0, section.getChunkX(), section.getChunkY(), section.getChunkZ());
+        this.section = section;
+        ownChildCount = 1;
     }
 
-    Octree() {
+    Octree(int ignoredBits, int x, int y, int z) {
+        this.ignoredBits = ignoredBits;
+        filter = ignoredBits == 32 ? 0 : -1 << ignoredBits;
+        selector = 1 << (ignoredBits - 1); // may only be used if ignoredBits > 0
+
+        this.x = x & filter;
+        this.y = y & filter;
+        this.z = z & filter;
     }
 
-    private void setIgnoredBits(int bits) {
-        ignoredBits = bits;
-        filter = -1 << ignoredBits;
-        selector = 1 << ignoredBits;
+    public static Octree root() {
+        return new Octree(0, 0, 0, 0);
     }
 
     boolean contains(int x, int y, int z) {
@@ -47,121 +55,57 @@ public class Octree {
                 && (z & filter) == this.z;
     }
 
+    boolean contains(Octree tree) {
+        return contains(tree.x, tree.y, tree.z);
+    }
+
     int getIndexFor(int x, int y, int z) {
         return (x & selector) | (y & selector) << 1 | (z & selector) << 2;
     }
 
-    Octree addSection(RenderSection toSet) {
+    int getIndexFor(Octree tree) {
+        return getIndexFor(tree.x, tree.y, tree.z);
+    }
+
+    void setSection(RenderSection toSet) {
         if (toSet == null) {
-            return this;
+            return;
         }
         int x = toSet.getChunkX();
         int y = toSet.getChunkY();
         int z = toSet.getChunkZ();
 
-        if (section == null && children == null) {
-            section = toSet;
-
-            // set mask to all 1s since a leaf node must match exactly
-            setIgnoredBits(0);
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            return this;
-        } else {
-            return merge(new Octree(toSet));
-        }
-    }
-
-    private static Octree mergeAsSiblings(Octree a, Octree b) {
-        return new Octree().merge(a).merge(b);
-    }
-
-    Octree merge(Octree other) {
-        // if this section is a leaf node, generate a new parent on which to set both
-        // this node and the new sibling
-        if (section != null) {
-            return mergeAsSiblings(this, other);
-        }
-
-        // this is an inner node without children
-        else if (children == null) {
-            // this section has no children yet, so create a new array of children
-            children = new Octree[8];
-
-            setIgnoredBits(other.ignoredBits + 1);
-            x = other.x & filter;
-            y = other.y & filter;
-            z = other.z & filter;
-
-            children[getIndexFor(other.x, other.y, other.z)] = other;
-            return this;
-        }
-
-        // if the other is larger than this node, merge this node into the other
-        else if (other.ignoredBits > ignoredBits) {
-            return other.merge(this);
-        }
-
-        // if the other is the same size (same ignoredBits), create a new parent and add
-        // this and the other. In the case of the other being the same as this node,
-        // this results in a parent with only one child
-        else if (other.ignoredBits == ignoredBits) {
-            return mergeAsSiblings(this, other);
-        }
-
-        // if the other is more than one level smaller, make a new parent for it
-        // and add it then, possibly then adding the new parent as a direct child
-        // but otherwise creating new parents until the child is the right size
-        else if (other.ignoredBits + 1 < ignoredBits) {
-            return merge(new Octree().merge(other));
-        }
-
-        // if the other is exactly one level smaller than this node,
-        // which is the right size for children of this node,
-        // check if other is contained
-        else if (contains(other.x, other.y, other.z)) {
-            // check if the place for this node is already occupied
-            int index = getIndexFor(other.x, other.y, other.z);
-            Octree existingChild = children[index];
-            if (existingChild != null) {
-                // instead add the child to the existing node
-                children[index] = existingChild.merge(other);
+        if (contains(x, y, z)) {
+            if (ignoredBits == 0) {
+                section = toSet;
             } else {
-                // if the place is free, add the new node
-                children[getIndexFor(other.x, other.y, other.z)] = other;
+                if (children == null) {
+                    children = new Octree[8];
+                }
+
+                // find the index for the section
+                int index = getIndexFor(x, y, z);
+                Octree existingChild = children[index];
+
+                // if there is already a child, add the section to it instead of directly
+                if (existingChild != null) {
+                    existingChild.setSection(toSet);
+                } else {
+                    // crewate new nested nodes until the section fits (reaches the correct level)
+                    Octree child = new Octree(toSet);
+                    while (child.ignoredBits + 1 != ignoredBits) {
+                        Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z);
+                        newParent.children = new Octree[8];
+                        newParent.children[newParent.getIndexFor(child)] = child;
+                        newParent.ownChildCount = 1;
+                        child = newParent;
+                    }
+                    children[index] = child;
+                    ownChildCount++;
+                }
             }
-            return this;
+        } else {
+            throw new IllegalArgumentException("Section " + toSet + " is not contained in " + this);
         }
-
-        // the other is at the right level, but not contained in this node.
-        // make a new parent and try to add both this and the other
-        // since the new parent is a higher level and is therefore larger,
-        // possibly containing both this node and the other
-        else {
-            return mergeAsSiblings(this, other);
-        }
-    }
-
-    // TODO: some kind of test to make sure that the numbers even make sense
-    // TODO: do negative chunk coordinates work? (maximum recursion depth of the tree)
-    static {
-        Octree a = new Octree(new RenderSection(null, 0, 0, 0));
-        Octree b = new Octree(new RenderSection(null, 1, 0, 0));
-        Octree c = new Octree(new RenderSection(null, 0, 1, 0));
-        Octree d = new Octree(new RenderSection(null, 0, 0, 1));
-        Octree e = new Octree(new RenderSection(null, 1, 1, 0));
-        Octree f = new Octree(new RenderSection(null, 1, 0, 1));
-        Octree g = new Octree(new RenderSection(null, 0, 1, 1));
-        Octree h = new Octree(new RenderSection(null, 1, 1, 1));
-        
-        Octree l1 = new Octree(new RenderSection(null, 10, 0, 0));
-        Octree l2 = new Octree(new RenderSection(null, 10, 10, 0));
-        Octree l3 = new Octree(new RenderSection(null, 0, 10, 0));
-
-        Octree merged1 = a.merge(b).merge(c).merge(d).merge(e).merge(f).merge(g).merge(h);
-        Octree merged2 = l1.merge(l2);
-        Octree merged3 = merged2.merge(l3);
-        Octree merged4 = merged1.merge(merged3);
     }
 }
