@@ -42,6 +42,7 @@ public class Octree {
     public final int ignoredBits;
     public final int filter;
     public final int selector;
+    public final int size; // size of the node in sections
     public final int x, y, z;
 
     public Octree(RenderSection section) {
@@ -50,6 +51,7 @@ public class Octree {
         ignoredBits = 0;
         filter = -1;
         selector = 0; // doesn't matter for leaf nodes
+        size = 1;
 
         x = section.getChunkX();
         y = section.getChunkY();
@@ -71,6 +73,7 @@ public class Octree {
         this.ignoredBits = ignoredBits;
         filter = ignoredBits == 32 ? 0 : -1 << ignoredBits;
         selector = 1 << (ignoredBits - 1);
+        size = selector << 1; // same as parent.selector
 
         this.x = x & filter;
         this.y = y & filter;
@@ -213,10 +216,13 @@ public class Octree {
      * 
      * @param axisIndex the axis index of the face (0 = x, 1 = y, 2 = z)
      * @param axisSign  the sign of the normal of the face
+     * @param sameSize  whether to return a node of the same size as this node or
+     *                  also allow returning a node of a larger size. Never returns
+     *                  a node that contains this node.
      * @return The same-size octree node adjacent to the given face of this node, or
      *         null if there is no such node
      */
-    public Octree getFaceAdjacent(int axisIndex, int axisSign) {
+    public Octree getFaceAdjacent(int axisIndex, int axisSign, boolean sameSize) {
         if (parent == null) {
             // nothing is adjacent to the root node
             return null;
@@ -224,7 +230,7 @@ public class Octree {
 
         // TODO: what happens in the case of the second-level octree? (parent's selector
         // is 1 << 31)
-        int offset = axisSign > 0 ? parent.selector : -parent.selector;
+        int offset = axisSign > 0 ? size : -size;
 
         // compute the origin of the mirrored volume. Looking for an octree node of the
         // same size as this node with these coordinates as its origin will give the
@@ -248,6 +254,52 @@ public class Octree {
                 break;
         }
 
+        // get the adjacent common parent of this node and the mirrored volume
+        Octree mirrorVolume = getAdjacentCommonParent(targetX, targetY, targetZ);
+        if (mirrorVolume == null) {
+            // there is no adjacent volume
+            return null;
+        }
+
+        // step downwards until the node of exactly the mirrored volume is found or
+        // there is no such node
+        while (mirrorVolume.ignoredBits > ignoredBits) {
+            int index = mirrorVolume.getIndexFor(targetX, targetY, targetZ);
+            Octree child = mirrorVolume.children[index];
+            if (child == null) {
+                // check if the mirror volume contains this node, only happens in case there are
+                // zero downards steps until the child is null. If the mirror volume does
+                // contain this node, it must be the same as the adjacent common parent from
+                // above and we aren't interested in that.
+                if (sameSize || mirrorVolume.contains(this)) {
+                    return null;
+                } else {
+                    break;
+                }
+            } else {
+                mirrorVolume = child;
+            }
+        }
+
+        return mirrorVolume;
+    }
+
+    /**
+     * Returns the octree node that is the common parent of this node and the node
+     * specified by the given coordinates.
+     * 
+     * @param targetX the x coordinate of the target node
+     * @param targetY the y coordinate of the target node
+     * @param targetZ the z coordinate of the target node
+     * @return The common parent of this node and the specified node, or null if
+     *         there is none
+     */
+    public Octree getAdjacentCommonParent(int targetX, int targetY, int targetZ) {
+        if (parent == null) {
+            // nothing is adjacent to the root node
+            return null;
+        }
+
         // find the next parent that contains the volume of this octree but mirrored
         // along the face we're interested in
         Octree mirrorVolume = parent;
@@ -258,23 +310,30 @@ public class Octree {
                 return null;
             }
         }
-
-        // step downwards until the node of exactly the mirrored volume is found or
-        // there is no such node
-        while (mirrorVolume.ignoredBits > ignoredBits) {
-            int index = mirrorVolume.getIndexFor(targetX, targetY, targetZ);
-            mirrorVolume = mirrorVolume.children[index];
-            if (mirrorVolume == null) {
-                // the mirrored volume is outside of the world since not parent contains it
-                return null;
-            }
-        }
-
         return mirrorVolume;
     }
 
-    public Octree getFaceAdjacent(Direction direction) {
-        return getFaceAdjacent(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction));
+    public Octree getAdjacentCommonParent(int axisIndex, int axisSign) {
+        int offset = axisSign > 0 ? 1 : -1; // only 1 needed for common parent
+        int targetX = x;
+        int targetY = y;
+        int targetZ = z;
+        switch (axisIndex) {
+            case 0:
+                targetX += offset;
+                break;
+            case 1:
+                targetY += offset;
+                break;
+            case 2:
+                targetZ += offset;
+                break;
+        }
+        return getAdjacentCommonParent(targetX, targetY, targetZ);
+    }
+
+    public Octree getFaceAdjacent(Direction direction, boolean sameSize) {
+        return getFaceAdjacent(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction), sameSize);
     }
 
     private static final int[] FACE_INDICES = new int[] {
@@ -322,7 +381,7 @@ public class Octree {
     }
 
     public Collection<RenderSection> getFaceAdjacentSections(int axisIndex, int axisSign) {
-        Octree faceAdjacent = getFaceAdjacent(axisIndex, axisSign);
+        Octree faceAdjacent = getFaceAdjacent(axisIndex, axisSign, true);
         if (faceAdjacent == null) {
             return Collections.emptyList();
         }

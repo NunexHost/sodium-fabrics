@@ -144,7 +144,7 @@ public class OctreeTest {
         for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
             RenderSection adj = rs(x + dir.getOffsetX(), y + dir.getOffsetY(), z + dir.getOffsetZ());
             root.setSection(adj);
-            assertEquals(root.getSectionOctree(adj), rsOct.getFaceAdjacent(dir));
+            assertEquals(root.getSectionOctree(adj), rsOct.getFaceAdjacent(dir, true));
             root.removeSection(adj);
         }
     }
@@ -185,16 +185,19 @@ public class OctreeTest {
         RenderSection rs1 = rs(0, 1, 2);
         RenderSection rs3 = rs(1, 0, 1);
         RenderSection rs4 = rs(0, 2, 2);
+        RenderSection rs5 = rs(0, 0, 0);
 
         tree.setSection(rs0);
         tree.setSection(rs1);
         tree.setSection(rs3);
         tree.setSection(rs4);
+        tree.setSection(rs5);
 
         Octree oct0 = tree.getSectionOctree(rs0);
         Octree oct1 = tree.getSectionOctree(rs1);
         Octree oct3 = tree.getSectionOctree(rs3);
         Octree oct4 = tree.getSectionOctree(rs4);
+        Octree oct5 = tree.getSectionOctree(rs5);
 
         assertEquals(Set.of(rs4), Set.copyOf(oct0.getFaceAdjacentSections(0, -1)));
         assertEquals(Set.of(rs0), Set.copyOf(oct4.getFaceAdjacentSections(0, 1)));
@@ -206,8 +209,16 @@ public class OctreeTest {
         assertEquals(Set.of(rs3), Set.copyOf(oct1.parent.getFaceAdjacentSections(2, -1)));
         assertNotEquals(Set.of(rs0), Set.copyOf(oct1.parent.getFaceAdjacentSections(1, -1)));
         assertNotEquals(Set.of(rs0), Set.copyOf(oct1.parent.getFaceAdjacentSections(1, 1)));
-        assertEquals(oct0.parent, oct1.parent.getFaceAdjacent(1, 1));
-        assertEquals(oct1.parent, oct0.parent.getFaceAdjacent(1, -1));
+
+        assertEquals(oct0.parent, oct1.parent.getFaceAdjacent(1, 1, true));
+        assertEquals(oct1.parent, oct0.parent.getFaceAdjacent(1, -1, true));
+        assertEquals(oct1, oct4.getFaceAdjacent(1, -1, true));
+        assertEquals(oct1, oct4.getFaceAdjacent(1, -1, false));
+        assertEquals(oct0, oct4.getFaceAdjacent(0, 1, true));
+        assertEquals(oct3.parent, oct1.getFaceAdjacent(2, -1, false));
+        assertNull(oct1.getFaceAdjacent(2, -1, true));
+        assertNull(oct5.getFaceAdjacent(0, 1, false));
+        assertNull(oct5.getFaceAdjacent(0, 1, true));
     }
 
     @Test
