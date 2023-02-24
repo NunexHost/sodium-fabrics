@@ -1,11 +1,9 @@
 package me.jellysquid.mods.sodium.client.render.chunk;
 
 import java.util.*;
-import java.util.stream.IntStream;
 
 import me.jellysquid.mods.sodium.common.util.DirectionUtil;
 import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Direction.Axis;
 
 /**
  * An octree node.

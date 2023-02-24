@@ -209,4 +209,9 @@ public class OctreeTest {
         assertEquals(oct0.parent, oct1.parent.getFaceAdjacent(1, 1));
         assertEquals(oct1.parent, oct0.parent.getFaceAdjacent(1, -1));
     }
+
+    @Test
+    void testAdjacentNegativeHandling() {
+        // TODO: test to verify/find out if the adjacency features work across the positive/negative boundary
+    }
 }
