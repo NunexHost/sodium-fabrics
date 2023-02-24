@@ -1,6 +1,11 @@
 package me.jellysquid.mods.sodium.client.render.chunk;
 
-import java.util.Objects;
+import java.util.*;
+import java.util.stream.IntStream;
+
+import me.jellysquid.mods.sodium.common.util.DirectionUtil;
+import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Direction.Axis;
 
 /**
  * An octree node.
@@ -20,11 +25,21 @@ import java.util.Objects;
  * connected. Solution: only consider an octree node connected from one face to
  * another if all sections on that face connect to all sections of the other
  * face.
+ *
+ * TODO: acceleration structure to get from parent to children faster:
+ * references to the highest/largest/closest child that has more than 1 child
+ * anywhere in the subtree.
+ * 
+ * @author douira
  */
 public class Octree {
-    public final Octree[] children; // children can be null
+    // either children or section is null, the other is not null
+    public RenderSection section;
+    public final Octree[] children;
     public int ownChildCount = 0;
-    public RenderSection section; // section can be null
+
+    public Octree parent; // null for the root node
+    public int indexInParent; // only valid for non-root nodes, TODO: necessary?
 
     public final int ignoredBits;
     public final int filter;
@@ -71,6 +86,11 @@ public class Octree {
         return new Octree(32, 0, 0, 0);
     }
 
+    public void setParent(Octree parent, int indexInParent) {
+        this.parent = parent;
+        this.indexInParent = indexInParent;
+    }
+
     public boolean contains(int x, int y, int z) {
         return (x & filter) == this.x
                 && (y & filter) == this.y
@@ -82,6 +102,7 @@ public class Octree {
     }
 
     private int getIndexFor(int x, int y, int z) {
+        // TODO: branchless?
         return ((x & selector) == 0 ? 0 : 1)
                 | ((y & selector) == 0 ? 0 : 1) << 1
                 | ((z & selector) == 0 ? 0 : 1) << 2;
@@ -91,7 +112,7 @@ public class Octree {
         return getIndexFor(tree.x, tree.y, tree.z);
     }
 
-    void setSection(RenderSection toSet) {
+    public void setSection(RenderSection toSet) {
         if (toSet == null) {
             return;
         }
@@ -119,17 +140,20 @@ public class Octree {
                 Octree child = new Octree(toSet);
                 while (child.ignoredBits + 1 != ignoredBits) {
                     Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z);
-                    newParent.children[newParent.getIndexFor(child)] = child;
+                    int indexInParent = newParent.getIndexFor(child);
+                    newParent.children[indexInParent] = child;
+                    child.setParent(newParent, indexInParent);
                     newParent.ownChildCount = 1;
                     child = newParent;
                 }
                 children[index] = child;
+                child.setParent(this, index);
                 ownChildCount++;
             }
         }
     }
 
-    void removeSection(RenderSection toRemove) {
+    public void removeSection(RenderSection toRemove) {
         if (toRemove == null) {
             return;
         }
@@ -156,29 +180,158 @@ public class Octree {
                 // and remove the child if it's now empty
                 if (child.ownChildCount == 0) {
                     children[index] = null;
+                    child.setParent(null, -1); // for safety, do we need this?
                     ownChildCount--;
                 }
             }
         }
     }
 
-    boolean hasSectionPosition(RenderSection toFind) {
+    public Octree getSectionOctree(RenderSection toFind) {
         if (toFind == null) {
-            return false;
+            return null;
         }
         int x = toFind.getChunkX();
         int y = toFind.getChunkY();
         int z = toFind.getChunkZ();
 
         if (!contains(x, y, z)) {
-            return false;
+            return null;
         } else if (ignoredBits == 0) {
-            return true;
+            return section == toFind ? this : null;
         } else {
             // find the index for the section
             int index = getIndexFor(x, y, z);
             Octree child = children[index];
-            return child != null && child.hasSectionPosition(toFind);
+            return child == null ? null : child.getSectionOctree(toFind);
         }
+    }
+
+    /**
+     * Returns the octree node adjacent to the given face of this node of the same
+     * size. The returned node may be sparse. Null is returned if there is no such
+     * node either because there are no sections adjacent to the given face, or
+     * because the given face is on the edge of entire octree.
+     * 
+     * @param axisIndex the axis index of the face (0 = x, 1 = y, 2 = z)
+     * @param axisSign  the sign of the normal of the face
+     * @return The same-size octree node adjacent to the given face of this node, or
+     *         null if there is no such node
+     */
+    public Octree getFaceAdjacent(int axisIndex, int axisSign) {
+        if (parent == null) {
+            // nothing is adjacent to the root node
+            return null;
+        }
+
+        // TODO: what happens in the case of the second-level octree? (parent's selector
+        // is 1 << 31)
+        int offset = axisSign > 0 ? parent.selector : -parent.selector;
+
+        // compute the origin of the mirrored volume. Looking for an octree node of the
+        // same size as this node with these coordinates as its origin will give the
+        // correct result because if the octree with this origin was larger than
+        // this octree node, it would intersect with this node which is impossible.
+        // Furthermore, if it was smaller than this node, it would be contained within
+        // another node that is the same size as this octree node. Thus such a node
+        // exists and can be found with these coordinates.
+        int targetX = x;
+        int targetY = y;
+        int targetZ = z;
+        switch (axisIndex) {
+            case 0:
+                targetX += offset;
+                break;
+            case 1:
+                targetY += offset;
+                break;
+            case 2:
+                targetZ += offset;
+                break;
+        }
+
+        // find the next parent that contains the volume of this octree but mirrored
+        // along the face we're interested in
+        Octree mirrorVolume = parent;
+        while (!mirrorVolume.contains(targetX, targetY, targetZ)) {
+            mirrorVolume = mirrorVolume.parent;
+            if (mirrorVolume == null) {
+                // the mirrored volume is outside of the world since not parent contains it
+                return null;
+            }
+        }
+
+        // step downwards until the node of exactly the mirrored volume is found or
+        // there is no such node
+        while (mirrorVolume.ignoredBits > ignoredBits) {
+            int index = mirrorVolume.getIndexFor(targetX, targetY, targetZ);
+            mirrorVolume = mirrorVolume.children[index];
+            if (mirrorVolume == null) {
+                // the mirrored volume is outside of the world since not parent contains it
+                return null;
+            }
+        }
+
+        return mirrorVolume;
+    }
+
+    public Octree getFaceAdjacent(Direction direction) {
+        return getFaceAdjacent(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction));
+    }
+
+    private static final int[] FACE_INDICES = new int[] {
+            0x00020406, 0x01030507, 0x00010405, 0x02030607, 0x00010203, 0x04050607 };
+
+    // TODO: cache this result?
+    // TODO: if not, make it easier to iterate render sections without allocating a
+    // list. maybe pass in a Consumer<RenderSection>?
+    private void getFaceSections(Collection<RenderSection> accumulator, int axisIndex, int axisSign) {
+        if (ignoredBits == 0) {
+            // this is a leaf node, return the section because it touches all faces
+            accumulator.add(section);
+            return;
+        }
+
+        // iterate over all children that touch the given face. They have indices in
+        // which the bit at the axis index is equal to the axis sign
+        // convert the axis sign into either 0 (if negative) or 1 (if positive)
+        int indices = FACE_INDICES[(axisIndex << 1) + (axisSign > 0 ? 1 : 0)];
+        for (int i = 0; i < 4; i++) {
+            Octree child = children[indices & 0b111];
+            if (child != null) {
+                child.getFaceSections(accumulator, axisIndex, axisSign);
+            }
+            indices >>= 8;
+        }
+    }
+
+    /**
+     * Returns all sections contained within this octree node that are adjacent to
+     * the given face. This traverses the octree recursively.
+     * 
+     * @param axisIndex the axis index of the face (0 = x, 1 = y, 2 = z)
+     * @param axisSign  the sign of the normal of the face
+     * @return a list of sections adjacent to the given face
+     */
+    public Collection<RenderSection> getFaceSections(int axisIndex, int axisSign) {
+        Collection<RenderSection> accumulator = new ArrayList<>();
+        getFaceSections(accumulator, axisIndex, axisSign);
+        return accumulator;
+    }
+
+    public Collection<RenderSection> getFaceSections(Direction direction) {
+        return getFaceSections(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction));
+    }
+
+    public Collection<RenderSection> getFaceAdjacentSections(int axisIndex, int axisSign) {
+        Octree faceAdjacent = getFaceAdjacent(axisIndex, axisSign);
+        if (faceAdjacent == null) {
+            return Collections.emptyList();
+        }
+        return faceAdjacent.getFaceSections(axisIndex, -axisSign);
+    }
+
+    public Collection<RenderSection> getFaceAdjacentSections(Direction direction) {
+        return getFaceAdjacentSections(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction));
     }
 }

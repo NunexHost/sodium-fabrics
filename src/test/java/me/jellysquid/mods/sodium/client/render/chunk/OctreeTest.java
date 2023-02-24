@@ -2,8 +2,18 @@ package me.jellysquid.mods.sodium.client.render.chunk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.Set;
+
 import org.junit.jupiter.api.Test;
 
+import me.jellysquid.mods.sodium.common.util.DirectionUtil;
+import net.minecraft.util.math.Direction;
+
+/**
+ * Tests for the {@link Octree} class to make sure the logic is correct.
+ * 
+ * @author douira
+ */
 public class OctreeTest {
     private static RenderSection rs(int x, int y, int z) {
         return new RenderSection(null, x, y, z);
@@ -106,5 +116,97 @@ public class OctreeTest {
     void testRoot() {
         Octree root = Octree.newRoot();
         assertEquals(32, root.ignoredBits);
+    }
+
+    @Test
+    void testGetFaceSectionsLeaf() {
+        Octree root = Octree.newRoot();
+        RenderSection rs = rs(1, 2, 3);
+        root.setSection(rs);
+
+        assertEquals(rs, root.getSectionOctree(rs).section);
+        root.removeSection(rs);
+        assertNull(root.getSectionOctree(rs));
+        root.setSection(rs);
+        assertEquals(rs, root.getSectionOctree(rs).section);
+    }
+
+    @Test
+    void testGetFaceAdjacent() {
+        Octree root = Octree.newRoot();
+        int x = 1;
+        int y = 2;
+        int z = 3;
+        RenderSection rs = rs(x, y, z);
+        root.setSection(rs);
+        Octree rsOct = root.getSectionOctree(rs);
+
+        for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
+            RenderSection adj = rs(x + dir.getOffsetX(), y + dir.getOffsetY(), z + dir.getOffsetZ());
+            root.setSection(adj);
+            assertEquals(root.getSectionOctree(adj), rsOct.getFaceAdjacent(dir));
+            root.removeSection(adj);
+        }
+    }
+
+    @Test
+    void testGetFaceSections() {
+        Octree tree = new Octree(2, 0, 0, 0);
+        RenderSection rs0 = rs(1, 2, 2);
+        RenderSection rs1 = rs(0, 1, 3);
+        RenderSection rs2 = rs(1, 3, 3);
+        RenderSection rs3 = rs(1, 0, 1);
+        RenderSection rs4 = rs(0, 2, 2);
+        RenderSection rs5 = rs(3, 2, 3);
+
+        tree.setSection(rs0);
+        tree.setSection(rs1);
+        tree.setSection(rs2);
+        tree.setSection(rs3);
+        tree.setSection(rs4);
+        tree.setSection(rs5);
+
+        for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
+        assertFalse(tree.getFaceSections(dir).contains(rs0));
+        }
+
+        assertEquals(Set.of(rs1, rs4), Set.copyOf(tree.getFaceSections(0, -1)));
+        assertEquals(Set.of(rs5), Set.copyOf(tree.getFaceSections(0, 1)));
+        assertEquals(Set.of(rs3), Set.copyOf(tree.getFaceSections(1, -1)));
+        assertEquals(Set.of(rs2), Set.copyOf(tree.getFaceSections(1, 1)));
+        assertEquals(Set.of(), Set.copyOf(tree.getFaceSections(2, -1)));
+        assertEquals(Set.of(rs1, rs2, rs5), Set.copyOf(tree.getFaceSections(2, 1)));
+    }
+
+    @Test
+    void testGetFaceAdjacentSections() {
+        Octree tree = new Octree(2, 0, 0, 0);
+        RenderSection rs0 = rs(1, 2, 2);
+        RenderSection rs1 = rs(0, 1, 2);
+        RenderSection rs3 = rs(1, 0, 1);
+        RenderSection rs4 = rs(0, 2, 2);
+
+        tree.setSection(rs0);
+        tree.setSection(rs1);
+        tree.setSection(rs3);
+        tree.setSection(rs4);
+
+        Octree oct0 = tree.getSectionOctree(rs0);
+        Octree oct1 = tree.getSectionOctree(rs1);
+        Octree oct3 = tree.getSectionOctree(rs3);
+        Octree oct4 = tree.getSectionOctree(rs4);
+
+        assertEquals(Set.of(rs4), Set.copyOf(oct0.getFaceAdjacentSections(0, -1)));
+        assertEquals(Set.of(rs0), Set.copyOf(oct4.getFaceAdjacentSections(0, 1)));
+        assertEquals(Set.of(), Set.copyOf(tree.getFaceAdjacentSections(1, -1)));
+        assertEquals(Set.of(), Set.copyOf(tree.getFaceAdjacentSections(0, 1)));
+        assertEquals(Set.of(), Set.copyOf(oct1.getFaceAdjacentSections(0, -1)));
+        assertEquals(Set.of(), Set.copyOf(oct3.parent.getFaceAdjacentSections(0, 1)));
+        assertEquals(Set.of(rs1), Set.copyOf(oct3.parent.getFaceAdjacentSections(2, 1)));
+        assertEquals(Set.of(rs3), Set.copyOf(oct1.parent.getFaceAdjacentSections(2, -1)));
+        assertNotEquals(Set.of(rs0), Set.copyOf(oct1.parent.getFaceAdjacentSections(1, -1)));
+        assertNotEquals(Set.of(rs0), Set.copyOf(oct1.parent.getFaceAdjacentSections(1, 1)));
+        assertEquals(oct0.parent, oct1.parent.getFaceAdjacent(1, 1));
+        assertEquals(oct1.parent, oct0.parent.getFaceAdjacent(1, -1));
     }
 }
