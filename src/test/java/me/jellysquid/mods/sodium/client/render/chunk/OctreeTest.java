@@ -193,11 +193,11 @@ public class OctreeTest {
         tree.setSection(rs4);
         tree.setSection(rs5);
 
-        Octree oct0 = tree.getSectionOctree(rs0);
-        Octree oct1 = tree.getSectionOctree(rs1);
-        Octree oct3 = tree.getSectionOctree(rs3);
-        Octree oct4 = tree.getSectionOctree(rs4);
-        Octree oct5 = tree.getSectionOctree(rs5);
+        Octree oct0 = rs0.octreeLeaf;
+        Octree oct1 = rs1.octreeLeaf;
+        Octree oct3 = rs3.octreeLeaf;
+        Octree oct4 = rs4.octreeLeaf;
+        Octree oct5 = rs5.octreeLeaf;
 
         assertEquals(Set.of(rs4), Set.copyOf(oct0.getFaceAdjacentSections(0, -1)));
         assertEquals(Set.of(rs0), Set.copyOf(oct4.getFaceAdjacentSections(0, 1)));
@@ -219,6 +219,41 @@ public class OctreeTest {
         assertNull(oct1.getFaceAdjacent(2, -1, true));
         assertNull(oct5.getFaceAdjacent(0, 1, false));
         assertNull(oct5.getFaceAdjacent(0, 1, true));
+    }
+
+    @Test
+    void testSkippableCount() {
+        Octree tree = new Octree(2, 0, 0, 0);
+        RenderSection rs0 = rs(1, 2, 2);
+        RenderSection rs1 = rs(0, 1, 2);
+        RenderSection rs3 = rs(1, 0, 1);
+        RenderSection rs4 = rs(0, 2, 2);
+        RenderSection rs5 = rs(0, 0, 0);
+
+        tree.setSection(rs0);
+        tree.setSection(rs1);
+        tree.setSection(rs3);
+        tree.setSection(rs4);
+        tree.setSection(rs5);
+
+        assertEquals(tree, rs0.octreeLeaf.parent.parent);
+
+        rs0.octreeLeaf.setLeafSkippable(false);
+        assertEquals(0, rs0.octreeLeaf.skippableChildren);
+        rs0.octreeLeaf.setLeafSkippable(true);
+        assertEquals(1, rs0.octreeLeaf.skippableChildren);
+        assertEquals(1, rs0.octreeLeaf.parent.skippableChildren);
+        assertEquals(0, rs0.octreeLeaf.parent.parent.skippableChildren);
+        rs1.octreeLeaf.setLeafSkippable(true);
+        rs3.octreeLeaf.setLeafSkippable(true);
+        rs4.octreeLeaf.setLeafSkippable(true);
+        rs5.octreeLeaf.setLeafSkippable(true);
+        assertEquals(3, rs0.octreeLeaf.parent.parent.skippableChildren);
+        rs1.octreeLeaf.setLeafSkippable(false);
+        rs3.octreeLeaf.setLeafSkippable(false);
+        rs4.octreeLeaf.setLeafSkippable(false);
+        rs5.octreeLeaf.setLeafSkippable(false);
+        assertEquals(0, rs0.octreeLeaf.parent.parent.skippableChildren);
     }
 
     @Test

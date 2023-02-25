@@ -43,6 +43,8 @@ public class RenderSection {
 
     private int flags;
 
+    public Octree octreeLeaf;
+
     public RenderSection(SodiumWorldRenderer worldRenderer, int chunkX, int chunkY, int chunkZ) {
         this.worldRenderer = worldRenderer;
 
@@ -106,6 +108,12 @@ public class RenderSection {
 
         this.tickable = !info.getAnimatedSprites().isEmpty();
         this.flags = info.getFlags();
+
+        octreeLeaf.updateSectionSkippable();
+    }
+
+    public boolean hasEmptyData() {
+        return this.data == ChunkRenderData.EMPTY;
     }
 
     public int getFlags() {

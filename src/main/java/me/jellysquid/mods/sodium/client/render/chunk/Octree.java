@@ -45,6 +45,9 @@ public class Octree {
     public final int size; // size of the node in sections
     public final int x, y, z;
 
+    public int lastVisibleFrame = -1;
+    public int skippableChildren = 0;
+
     public Octree(RenderSection section) {
         Objects.requireNonNull(section);
 
@@ -60,17 +63,19 @@ public class Octree {
         children = null;
         this.section = section;
         ownChildCount = 1;
+        section.octreeLeaf = this;
     }
 
     public Octree(int ignoredBits, int x, int y, int z) {
+        this.ignoredBits = ignoredBits;
         if (ignoredBits < 0 || ignoredBits > 32) {
             throw new IllegalArgumentException("ignoredBits must be between 0 and 32");
         }
-        if (ignoredBits == 0) {
+        if (isLeaf()) {
             throw new IllegalArgumentException(
                     "ignoredBits is only 0 for leaf nodes which must be constructed as such");
         }
-        this.ignoredBits = ignoredBits;
+
         filter = ignoredBits == 32 ? 0 : -1 << ignoredBits;
         selector = 1 << (ignoredBits - 1);
         size = selector << 1; // same as parent.selector
@@ -102,6 +107,14 @@ public class Octree {
         return contains(tree.x, tree.y, tree.z);
     }
 
+    public boolean isLeaf() {
+        return ignoredBits == 0;
+    }
+
+    public boolean isSkippable() {
+        return skippableChildren == ownChildCount;
+    }
+
     private int getIndexFor(int x, int y, int z) {
         // TODO: branchless?
         return ((x & selector) == 0 ? 0 : 1)
@@ -125,9 +138,11 @@ public class Octree {
             throw new IllegalArgumentException("Section " + toSet + " is not contained in " + this);
         }
 
-        if (ignoredBits == 0) {
+        if (isLeaf()) {
             section = toSet;
             ownChildCount = 1;
+            toSet.octreeLeaf = this;
+            updateSectionSkippable();
         } else {
             // find the index for the section
             int index = getIndexFor(x, y, z);
@@ -138,7 +153,8 @@ public class Octree {
                 existingChild.setSection(toSet);
             } else {
                 // crewate new nested nodes until the section fits (reaches the correct level)
-                Octree child = new Octree(toSet);
+                Octree leaf = new Octree(toSet);
+                Octree child = leaf;
                 while (child.ignoredBits + 1 != ignoredBits) {
                     Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z);
                     int indexInParent = newParent.getIndexFor(child);
@@ -150,6 +166,7 @@ public class Octree {
                 children[index] = child;
                 child.setParent(this, index);
                 ownChildCount++;
+                leaf.updateSectionSkippable();
             }
         }
     }
@@ -166,9 +183,11 @@ public class Octree {
             throw new IllegalArgumentException("Section " + toRemove + " is not contained in " + this);
         }
 
-        if (ignoredBits == 0) {
+        if (isLeaf()) {
+            setLeafSkippable(false); // false because of removal
             section = null;
             ownChildCount = 0;
+            toRemove.octreeLeaf = null;
         } else {
             // find the index for the section
             int index = getIndexFor(x, y, z);
@@ -188,6 +207,42 @@ public class Octree {
         }
     }
 
+    public void updateSectionSkippable() {
+        setLeafSkippable(section.hasEmptyData());
+    }
+
+    void setLeafSkippable(boolean skippable) {
+        if (ignoredBits != 0) {
+            throw new IllegalStateException(
+                    "Skippable status of a non-leaf should be changed with changeSkippableCount");
+        }
+
+        // check if there was any change in skippable status and increment/decrement the
+        // parent if necessary
+        int newSkippableChildren = skippable ? 1 : 0;
+        if (skippableChildren != newSkippableChildren) {
+            skippableChildren = newSkippableChildren;
+            if (parent != null) {
+                parent.changeSkippableCount(skippable ? 1 : -1);
+            }
+        }
+    }
+
+    private void changeSkippableCount(int change) {
+        if (isLeaf()) {
+            throw new IllegalStateException("Skippable status of a leaf should be changed with setLeafSkippable");
+        }
+
+        // decrement or increment skippable count
+        skippableChildren += change;
+
+        // send increment or decrement to parent if the skippable status changed
+        if (parent != null && (change == 1 && skippableChildren == ownChildCount
+                || change == -1 && skippableChildren + 1 == ownChildCount)) {
+            parent.changeSkippableCount(change);
+        }
+    }
+
     public Octree getSectionOctree(RenderSection toFind) {
         if (toFind == null) {
             return null;
@@ -198,7 +253,7 @@ public class Octree {
 
         if (!contains(x, y, z)) {
             return null;
-        } else if (ignoredBits == 0) {
+        } else if (isLeaf()) {
             return section == toFind ? this : null;
         } else {
             // find the index for the section
@@ -336,8 +391,10 @@ public class Octree {
         return getFaceAdjacent(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction), sameSize);
     }
 
-    // indexes for each of the following 4 masks:
-    // 01010101, 10101010, 00110011, 11001100, 00001111, 11110000, 00000000, 11111111
+    // indexes for each of the following 4-bit masks (1 each direction)
+    // 01010101, 10101010,
+    // 00110011, 11001100,
+    // 00001111, 11110000,
     private static final int[] FACE_INDICES = new int[] {
             0x00020406, 0x01030507, 0x00010405, 0x02030607, 0x00010203, 0x04050607 };
 
@@ -345,7 +402,7 @@ public class Octree {
     // TODO: if not, make it easier to iterate render sections without allocating a
     // list. maybe pass in a Consumer<RenderSection>?
     private void getFaceSections(Collection<RenderSection> accumulator, int axisIndex, int axisSign) {
-        if (ignoredBits == 0) {
+        if (isLeaf()) {
             // this is a leaf node, return the section because it touches all faces
             accumulator.add(section);
             return;
