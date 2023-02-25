@@ -314,19 +314,19 @@ public class Octree {
     }
 
     public Octree getAdjacentCommonParent(int axisIndex, int axisSign) {
-        int offset = axisSign > 0 ? 1 : -1; // only 1 needed for common parent
+        int nudge = axisSign > 0 ? 1 : -1; // only 1 needed for common parent
         int targetX = x;
         int targetY = y;
         int targetZ = z;
         switch (axisIndex) {
             case 0:
-                targetX += offset;
+                targetX += nudge;
                 break;
             case 1:
-                targetY += offset;
+                targetY += nudge;
                 break;
             case 2:
-                targetZ += offset;
+                targetZ += nudge;
                 break;
         }
         return getAdjacentCommonParent(targetX, targetY, targetZ);
@@ -336,6 +336,8 @@ public class Octree {
         return getFaceAdjacent(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction), sameSize);
     }
 
+    // indexes for each of the following 4 masks:
+    // 01010101, 10101010, 00110011, 11001100, 00001111, 11110000, 00000000, 11111111
     private static final int[] FACE_INDICES = new int[] {
             0x00020406, 0x01030507, 0x00010405, 0x02030607, 0x00010203, 0x04050607 };
 
