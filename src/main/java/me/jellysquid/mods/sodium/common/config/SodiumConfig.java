@@ -29,6 +29,7 @@ public class SodiumConfig {
         this.addMixinRule("core", true); // TODO: Don't actually allow the user to disable this
 
         this.addMixinRule("features.block", true);
+        this.addMixinRule("features.biome", true);
         this.addMixinRule("features.buffer_builder", true);
         this.addMixinRule("features.buffer_builder.fast_advance", true);
         this.addMixinRule("features.buffer_builder.fast_sort", true);
@@ -45,6 +46,7 @@ public class SodiumConfig {
         this.addMixinRule("features.matrix_stack", true);
         this.addMixinRule("features.mipmaps", true);
         this.addMixinRule("features.model", true);
+        this.addMixinRule("features.optimized_stitching", true);
         this.addMixinRule("features.options", true);
         this.addMixinRule("features.particle", true);
         this.addMixinRule("features.particle.cull", true);
