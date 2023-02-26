@@ -24,7 +24,7 @@ public class OctreeTest {
 
     @Test
     void testSetSection() {
-        Octree tree = new Octree(2, 0, 0, 0);
+        Octree tree = new Octree(2, 0, 0, 0, 0);
         RenderSection rs1 = rs(0, 0, 0);
         tree.setSection(rs1);
         assertEquals(2, tree.ignoredBits);
@@ -66,7 +66,7 @@ public class OctreeTest {
 
     @Test
     void testContains() {
-        Octree tree = new Octree(2, 0, 0, 0);
+        Octree tree = new Octree(2, 0, 0, 0, 0);
         for (int x = 0; x < 4; x++) {
             for (int y = 0; y < 4; y++) {
                 for (int z = 0; z < 4; z++) {
@@ -82,7 +82,7 @@ public class OctreeTest {
 
     @Test
     void testRemoveSection() {
-        Octree tree = new Octree(2, 0, 0, 0);
+        Octree tree = new Octree(2, 0, 0, 0, 0);
         tree.setSection(rs(0, 0, 0));
         tree.setSection(rs(1, 0, 0));
         tree.setSection(rs(0, 2, 0));
@@ -113,12 +113,6 @@ public class OctreeTest {
         assertEquals(0, tree.ownChildCount);
         assertNull(tree.children[0]);
         assertNull(tree.children[2]);
-    }
-
-    @Test
-    void testRoot() {
-        Octree root = Octree.newRoot();
-        assertEquals(32, root.ignoredBits);
     }
 
     @ParameterizedTest
@@ -170,7 +164,7 @@ public class OctreeTest {
 
     @Test
     void testGetFaceSections() {
-        Octree tree = new Octree(2, 0, 0, 0);
+        Octree tree = new Octree(2, 0, 0, 0, 0);
         RenderSection rs0 = rs(1, 2, 2);
         RenderSection rs1 = rs(0, 1, 3);
         RenderSection rs2 = rs(1, 3, 3);
@@ -199,7 +193,7 @@ public class OctreeTest {
 
     @Test
     void testGetFaceAdjacentSections() {
-        Octree tree = new Octree(2, 0, 0, 0);
+        Octree tree = new Octree(2, 0, 0, 0, 0);
         RenderSection rs0 = rs(1, 2, 2);
         RenderSection rs1 = rs(0, 1, 2);
         RenderSection rs3 = rs(1, 0, 1);
@@ -242,7 +236,7 @@ public class OctreeTest {
 
     @Test
     void testSkippableCount() {
-        Octree tree = new Octree(2, 0, 0, 0);
+        Octree tree = new Octree(2, 0, 0, 0, 0);
         RenderSection rs0 = rs(1, 2, 2);
         RenderSection rs1 = rs(0, 1, 2);
         RenderSection rs3 = rs(1, 0, 1);

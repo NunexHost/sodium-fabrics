@@ -83,6 +83,7 @@ public class Octree {
     public final int filter;
     public final int selector;
     public final int size; // size of the node in sections
+    public final int offset;
     public final int x, y, z;
     // last coordinate at which any child may have its origin, inside the node
     public final int maxX, maxY, maxZ;
@@ -94,17 +95,18 @@ public class Octree {
     private int childLastVisibleFrame = -1;
     public int skippableChildren = 0; // skippable meaning containing only empty sections
 
-    public Octree(RenderSection section) {
+    public Octree(RenderSection section, int offset) {
         Objects.requireNonNull(section);
 
         this.ignoredBits = 0;
         this.filter = -1;
         this.selector = 0; // doesn't matter for leaf nodes
         this.size = 1;
+        this.offset = offset;
 
-        this.x = section.getChunkX();
-        this.y = section.getChunkY();
-        this.z = section.getChunkZ();
+        this.x = processCoordinate(section.getChunkX());
+        this.y = processCoordinate(section.getChunkY());
+        this.z = processCoordinate(section.getChunkZ());
         this.maxX = this.x + this.size - 1;
         this.maxY = this.y + this.size - 1;
         this.maxZ = this.z + this.size - 1;
@@ -115,7 +117,7 @@ public class Octree {
         section.octreeLeaf = this;
     }
 
-    public Octree(int ignoredBits, int x, int y, int z) {
+    public Octree(int ignoredBits, int x, int y, int z, int offset) {
         this.ignoredBits = ignoredBits;
         if (ignoredBits < 0 || ignoredBits > 32) {
             throw new IllegalArgumentException("ignoredBits must be between 0 and 32");
@@ -125,9 +127,10 @@ public class Octree {
                     "ignoredBits is only 0 for leaf nodes which must be constructed as such");
         }
 
-        this.filter = ignoredBits == 32 ? 0 : -1 << ignoredBits;
+        this.filter = ignoredBits == 32 ? 0 : -1 << ignoredBits; // in case there are 32 bits
         this.selector = 1 << (ignoredBits - 1);
         this.size = selector << 1; // same as parent.selector
+        this.offset = offset;
 
         this.x = x & filter;
         this.y = y & filter;
@@ -141,7 +144,12 @@ public class Octree {
     }
 
     public static Octree newRoot() {
-        return new Octree(32, 0, 0, 0);
+        // default root octree settings:
+        // 22 bits for +/- 30 million blocks, -> 22 bits for sections of 16 blocks.
+        // offset of 30_000_000 >> 4 = 1_875_000 to bring the coordinates into the
+        // positive since the sign bit is the last but we're not looking at it with just
+        // 22 bits of coordinates.
+        return new Octree(22, 0, 0, 0, 30_000_000 >> 4);
     }
 
     public void setParent(Octree parent, int indexInParent) {
@@ -167,6 +175,10 @@ public class Octree {
         return this.skippableChildren == this.ownChildCount;
     }
 
+    private int processCoordinate(int coord) {
+        return coord + this.offset;
+    }
+
     public static int manhattanDistance(Octree a, Octree b) {
         return Math.abs(a.x + (a.size >> 1) - b.x - (b.size >> 1))
                 + Math.abs(a.y + (a.size >> 1) - b.y - (b.size >> 1))
@@ -188,9 +200,9 @@ public class Octree {
         if (toSet == null) {
             return;
         }
-        int rsX = toSet.getChunkX();
-        int rsY = toSet.getChunkY();
-        int rsZ = toSet.getChunkZ();
+        int rsX = processCoordinate(toSet.getChunkX());
+        int rsY = processCoordinate(toSet.getChunkY());
+        int rsZ = processCoordinate(toSet.getChunkZ());
 
         if (!contains(rsX, rsY, rsZ)) {
             throw new IllegalArgumentException("Section " + toSet + " is not contained in " + this);
@@ -211,10 +223,10 @@ public class Octree {
                 existingChild.setSection(toSet);
             } else {
                 // crewate new nested nodes until the section fits (reaches the correct level)
-                Octree leaf = new Octree(toSet);
+                Octree leaf = new Octree(toSet, this.offset);
                 Octree child = leaf;
                 while (child.ignoredBits + 1 != this.ignoredBits) {
-                    Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z);
+                    Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z, this.offset);
                     int indexInParent = newParent.getIndexFor(child);
                     newParent.children[indexInParent] = child;
                     child.setParent(newParent, indexInParent);
@@ -233,9 +245,9 @@ public class Octree {
         if (toRemove == null) {
             return;
         }
-        int rsX = toRemove.getChunkX();
-        int rsY = toRemove.getChunkY();
-        int rsZ = toRemove.getChunkZ();
+        int rsX = processCoordinate(toRemove.getChunkX());
+        int rsY = processCoordinate(toRemove.getChunkY());
+        int rsZ = processCoordinate(toRemove.getChunkZ());
 
         if (!contains(rsX, rsY, rsZ)) {
             throw new IllegalArgumentException("Section " + toRemove + " is not contained in " + this);
@@ -386,9 +398,9 @@ public class Octree {
         if (toFind == null) {
             return null;
         }
-        int rsX = toFind.getChunkX();
-        int rsY = toFind.getChunkY();
-        int rsZ = toFind.getChunkZ();
+        int rsX = processCoordinate(toFind.getChunkX());
+        int rsY = processCoordinate(toFind.getChunkY());
+        int rsZ = processCoordinate(toFind.getChunkZ());
 
         if (!contains(rsX, rsY, rsZ)) {
             return null;
