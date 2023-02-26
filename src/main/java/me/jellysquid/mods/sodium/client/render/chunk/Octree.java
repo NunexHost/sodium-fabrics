@@ -1,7 +1,9 @@
 package me.jellysquid.mods.sodium.client.render.chunk;
 
 import java.util.*;
+import java.util.function.Consumer;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import me.jellysquid.mods.sodium.common.util.DirectionUtil;
 import net.minecraft.util.math.Direction;
 
@@ -26,7 +28,24 @@ import net.minecraft.util.math.Direction;
  *
  * TODO: acceleration structure to get from parent to children faster:
  * references to the highest/largest/closest child that has more than 1 child
- * anywhere in the subtree.
+ * anywhere in the subtree. Idea: since iterating over all children would be a
+ * lot and doing it dynamically is also a lot of overhead because having a
+ * packpointer would mean a collection at the pointed-to child, limiting when
+ * and how often a downwards pointer is generated could make it still useful.
+ * Before doing BFS, an "accelerate pointer now" function could be called that
+ * does up to 4*32 iterations (more are likely unnecessary since this is mostly
+ * just to skip the large singleton chain near the root or its direct children)
+ * of generating down-links to the next relevant child. Problem: when sections
+ * are added or removed, would these links being wrong cause problems for the
+ * addition or removal process itself?
+ * 
+ * TODO: acceleration structure of indexing the own children array with a
+ * separate index array or fields that contain indices for when there are very
+ * few children (1 or 2, or more?) and they are always at a higher position.
+ * This would avoid iterating more children than necessary when there are only
+ * few children. Idea: just storing an index at which to start iterating (with a
+ * completion counter that counts down ownChildCount) would maybe already be
+ * effective. (do profiling to see if it's necessary)
  * 
  * @author douira
  */
@@ -44,25 +63,34 @@ public class Octree {
     public final int selector;
     public final int size; // size of the node in sections
     public final int x, y, z;
+    // last coordinate at which any child may have its origin, inside the node
+    public final int maxX, maxY, maxZ;
 
-    public int lastVisibleFrame = -1;
-    public int skippableChildren = 0;
+    // the newest frame in which this node was visible as the root of a subtree. If
+    // a parent was visible in a later frame, this is outdated.
+    private int lastVisibleFrame = -1;
+    // the newest lastVisibleFrame of all children
+    private int childLastVisibleFrame = -1;
+    public int skippableChildren = 0; // skippable meaning containing only empty sections
 
     public Octree(RenderSection section) {
         Objects.requireNonNull(section);
 
-        ignoredBits = 0;
-        filter = -1;
-        selector = 0; // doesn't matter for leaf nodes
-        size = 1;
+        this.ignoredBits = 0;
+        this.filter = -1;
+        this.selector = 0; // doesn't matter for leaf nodes
+        this.size = 1;
 
-        x = section.getChunkX();
-        y = section.getChunkY();
-        z = section.getChunkZ();
+        this.x = section.getChunkX();
+        this.y = section.getChunkY();
+        this.z = section.getChunkZ();
+        this.maxX = this.x + this.size - 1;
+        this.maxY = this.y + this.size - 1;
+        this.maxZ = this.z + this.size - 1;
 
-        children = null;
+        this.children = null;
         this.section = section;
-        ownChildCount = 1;
+        this.ownChildCount = 1;
         section.octreeLeaf = this;
     }
 
@@ -76,16 +104,19 @@ public class Octree {
                     "ignoredBits is only 0 for leaf nodes which must be constructed as such");
         }
 
-        filter = ignoredBits == 32 ? 0 : -1 << ignoredBits;
-        selector = 1 << (ignoredBits - 1);
-        size = selector << 1; // same as parent.selector
+        this.filter = ignoredBits == 32 ? 0 : -1 << ignoredBits;
+        this.selector = 1 << (ignoredBits - 1);
+        this.size = selector << 1; // same as parent.selector
 
         this.x = x & filter;
         this.y = y & filter;
         this.z = z & filter;
+        this.maxX = this.x + this.size - 1;
+        this.maxY = this.y + this.size - 1;
+        this.maxZ = this.z + this.size - 1;
 
-        children = new Octree[8];
-        section = null;
+        this.children = new Octree[8];
+        this.section = null;
     }
 
     public static Octree newRoot() {
@@ -98,9 +129,9 @@ public class Octree {
     }
 
     public boolean contains(int x, int y, int z) {
-        return (x & filter) == this.x
-                && (y & filter) == this.y
-                && (z & filter) == this.z;
+        return (x & this.filter) == this.x
+                && (y & this.filter) == this.y
+                && (z & this.filter) == this.z;
     }
 
     public boolean contains(Octree tree) {
@@ -108,18 +139,24 @@ public class Octree {
     }
 
     public boolean isLeaf() {
-        return ignoredBits == 0;
+        return this.ignoredBits == 0;
     }
 
     public boolean isSkippable() {
-        return skippableChildren == ownChildCount;
+        return this.skippableChildren == this.ownChildCount;
+    }
+
+    public static int manhattanDistance(Octree a, Octree b) {
+        return Math.abs(a.x + (a.size >> 1) - b.x - (b.size >> 1))
+                + Math.abs(a.y + (a.size >> 1) - b.y - (b.size >> 1))
+                + Math.abs(a.z + (a.size >> 1) - b.z - (b.size >> 1));
     }
 
     private int getIndexFor(int x, int y, int z) {
         // TODO: branchless?
-        return ((x & selector) == 0 ? 0 : 1)
-                | ((y & selector) == 0 ? 0 : 1) << 1
-                | ((z & selector) == 0 ? 0 : 1) << 2;
+        return ((x & this.selector) == 0 ? 0 : 1)
+                | ((y & this.selector) == 0 ? 0 : 1) << 1
+                | ((z & this.selector) == 0 ? 0 : 1) << 2;
     }
 
     private int getIndexFor(Octree tree) {
@@ -130,22 +167,22 @@ public class Octree {
         if (toSet == null) {
             return;
         }
-        int x = toSet.getChunkX();
-        int y = toSet.getChunkY();
-        int z = toSet.getChunkZ();
+        int rsX = toSet.getChunkX();
+        int rsY = toSet.getChunkY();
+        int rsZ = toSet.getChunkZ();
 
-        if (!contains(x, y, z)) {
+        if (!contains(rsX, rsY, rsZ)) {
             throw new IllegalArgumentException("Section " + toSet + " is not contained in " + this);
         }
 
         if (isLeaf()) {
-            section = toSet;
-            ownChildCount = 1;
+            this.section = toSet;
+            this.ownChildCount = 1;
             toSet.octreeLeaf = this;
             updateSectionSkippable();
         } else {
             // find the index for the section
-            int index = getIndexFor(x, y, z);
+            int index = getIndexFor(rsX, rsY, rsZ);
             Octree existingChild = children[index];
 
             // if there is already a child, add the section to it instead of directly
@@ -155,7 +192,7 @@ public class Octree {
                 // crewate new nested nodes until the section fits (reaches the correct level)
                 Octree leaf = new Octree(toSet);
                 Octree child = leaf;
-                while (child.ignoredBits + 1 != ignoredBits) {
+                while (child.ignoredBits + 1 != this.ignoredBits) {
                     Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z);
                     int indexInParent = newParent.getIndexFor(child);
                     newParent.children[indexInParent] = child;
@@ -163,9 +200,9 @@ public class Octree {
                     newParent.ownChildCount = 1;
                     child = newParent;
                 }
-                children[index] = child;
+                this.children[index] = child;
                 child.setParent(this, index);
-                ownChildCount++;
+                this.ownChildCount++;
                 leaf.updateSectionSkippable();
             }
         }
@@ -175,23 +212,23 @@ public class Octree {
         if (toRemove == null) {
             return;
         }
-        int x = toRemove.getChunkX();
-        int y = toRemove.getChunkY();
-        int z = toRemove.getChunkZ();
+        int rsX = toRemove.getChunkX();
+        int rsY = toRemove.getChunkY();
+        int rsZ = toRemove.getChunkZ();
 
-        if (!contains(x, y, z)) {
+        if (!contains(rsX, rsY, rsZ)) {
             throw new IllegalArgumentException("Section " + toRemove + " is not contained in " + this);
         }
 
         if (isLeaf()) {
             setLeafSkippable(false); // false because of removal
-            section = null;
-            ownChildCount = 0;
+            this.section = null;
+            this.ownChildCount = 0;
             toRemove.octreeLeaf = null;
         } else {
             // find the index for the section
-            int index = getIndexFor(x, y, z);
-            Octree child = children[index];
+            int index = getIndexFor(rsX, rsY, rsZ);
+            Octree child = this.children[index];
 
             // if this child does exist, remove the section from it
             if (child != null) {
@@ -199,16 +236,16 @@ public class Octree {
 
                 // and remove the child if it's now empty
                 if (child.ownChildCount == 0) {
-                    children[index] = null;
+                    this.children[index] = null;
                     child.setParent(null, -1); // for safety, do we need this?
-                    ownChildCount--;
+                    this.ownChildCount--;
                 }
             }
         }
     }
 
     public void updateSectionSkippable() {
-        setLeafSkippable(section.hasEmptyData());
+        setLeafSkippable(this.section.hasEmptyData());
     }
 
     void setLeafSkippable(boolean skippable) {
@@ -220,10 +257,10 @@ public class Octree {
         // check if there was any change in skippable status and increment/decrement the
         // parent if necessary
         int newSkippableChildren = skippable ? 1 : 0;
-        if (skippableChildren != newSkippableChildren) {
-            skippableChildren = newSkippableChildren;
-            if (parent != null) {
-                parent.changeSkippableCount(skippable ? 1 : -1);
+        if (this.skippableChildren != newSkippableChildren) {
+            this.skippableChildren = newSkippableChildren;
+            if (this.parent != null) {
+                this.parent.changeSkippableCount(skippable ? 1 : -1);
             }
         }
     }
@@ -234,32 +271,148 @@ public class Octree {
         }
 
         // decrement or increment skippable count
-        skippableChildren += change;
+        this.skippableChildren += change;
 
         // send increment or decrement to parent if the skippable status changed
-        if (parent != null && (change == 1 && skippableChildren == ownChildCount
-                || change == -1 && skippableChildren + 1 == ownChildCount)) {
-            parent.changeSkippableCount(change);
+        if (this.parent != null && (change == 1
+                ? this.skippableChildren == this.ownChildCount
+                : this.skippableChildren + 1 == this.ownChildCount)) {
+            this.parent.changeSkippableCount(change);
         }
+    }
+
+    public void setLastVisibleFrame(int frame) {
+        // the two are separate because the real lastVisible frame is only updated if
+        // the node itself or a parent (parent unimplemented for now) was visited
+        this.lastVisibleFrame = frame;
+        this.setLastVisibleFrameFromChild(frame);
+    }
+
+    private void setLastVisibleFrameFromChild(int frame) {
+        // if not the same, set and also tell the parent.
+        // will usually make less then even log n steps since most children will be near
+        // eachother when they are marked, and they are all marked with the same frame
+        // number
+        if (this.childLastVisibleFrame != frame) {
+            this.childLastVisibleFrame = frame;
+            if (this.parent != null) {
+                this.parent.setLastVisibleFrameFromChild(frame);
+            }
+        }
+    }
+
+    /**
+     * Checks if this node or any of the parents were visible in the given frame. It
+     * has to check the parents because parents don't set lastVisibleFrame on all
+     * children (too much effort).
+     */
+    public boolean getSelfVisibleInFrame(int frame) {
+        if (this.lastVisibleFrame == frame) {
+            return true;
+        }
+        if (this.parent != null) {
+            return this.parent.getSelfVisibleInFrame(frame);
+        }
+        return false;
+    }
+
+    public boolean intersectsBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        // even if the box is inclusive of both the min and max, xMax is still inside
+        // the octree so it can be included
+        return this.x <= maxX && this.maxX >= minX
+                && this.y <= maxY && this.maxY >= minY
+                && this.z <= maxZ && this.maxZ >= minZ;
+    }
+
+    /**
+     * Checks if a box was visible in the given frame. It looks for a child
+     * intersecting with the box of which the own or a parent's last visible frame
+     * matches the given frame.
+     */
+    public boolean isBoxVisible(int frame, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        // childLastVisibleFrame and lastVisibleFrame are the same for leaf nodes
+        boolean matchesChildLastVisibleFrame = this.childLastVisibleFrame == frame;
+        boolean intersectsBox = intersectsBox(minX, minY, minZ, maxX, maxY, maxZ);
+
+        // a leaf node is visible if it was visited in the given frame and intersects
+        // with the box
+        if (isLeaf()) {
+            return matchesChildLastVisibleFrame && intersectsBox;
+        }
+
+        // skip if this frame doesn't appear as a visible frame in any of the children
+        // or if the box doesn't even intersect this node
+        if (!matchesChildLastVisibleFrame || !intersectsBox) {
+            return false;
+        }
+
+        // check if the box is visible in any of the children as the box may not
+        // intersect any actual render section, even if it does intersect this node,
+        // parts of which may be empty.
+        int childCount = this.ownChildCount;
+        for (Octree child : this.children) {
+            if (child != null && child.isBoxVisible(frame, minX, minY, minZ, maxX, maxY, maxZ)) {
+                return true;
+            }
+            if (--childCount == 0) {
+                break;
+            }
+        }
+        return false;
     }
 
     public Octree getSectionOctree(RenderSection toFind) {
         if (toFind == null) {
             return null;
         }
-        int x = toFind.getChunkX();
-        int y = toFind.getChunkY();
-        int z = toFind.getChunkZ();
+        int rsX = toFind.getChunkX();
+        int rsY = toFind.getChunkY();
+        int rsZ = toFind.getChunkZ();
 
-        if (!contains(x, y, z)) {
+        if (!contains(rsX, rsY, rsZ)) {
             return null;
         } else if (isLeaf()) {
-            return section == toFind ? this : null;
+            return this.section == toFind ? this : null;
         } else {
             // find the index for the section
-            int index = getIndexFor(x, y, z);
-            Octree child = children[index];
+            int index = getIndexFor(rsX, rsY, rsZ);
+            Octree child = this.children[index];
             return child == null ? null : child.getSectionOctree(toFind);
+        }
+    }
+
+    public void iterateWholeTree(Consumer<Octree> consumer) {
+        if (isLeaf()) {
+            consumer.accept(this);
+        } else {
+            int childCount = this.ownChildCount;
+            for (Octree child : this.children) {
+                if (child != null) {
+                    child.iterateWholeTree(consumer);
+                    if (--childCount == 0) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    public void iterateUnskippableTree(Consumer<Octree> consumer) {
+        if (isSkippable()) {
+            return;
+        }
+        if (isLeaf()) {
+            consumer.accept(this);
+        } else {
+            int childCount = this.ownChildCount - this.skippableChildren;
+            for (Octree child : this.children) {
+                if (child != null && !child.isSkippable()) {
+                    child.iterateUnskippableTree(consumer);
+                    if (--childCount == 0) {
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -267,25 +420,27 @@ public class Octree {
      * Returns the octree node adjacent to the given face of this node of the same
      * size. The returned node may be sparse. Null is returned if there is no such
      * node either because there are no sections adjacent to the given face, or
-     * because the given face is on the edge of entire octree.
+     * because the given face is on the edge of entire octree. Never returns a node
+     * that contains this node or a smaller node.
      * 
-     * @param axisIndex the axis index of the face (0 = x, 1 = y, 2 = z)
-     * @param axisSign  the sign of the normal of the face
-     * @param sameSize  whether to return a node of the same size as this node or
-     *                  also allow returning a node of a larger size. Never returns
-     *                  a node that contains this node.
+     * @param axisIndex        the axis index of the face (0 = x, 1 = y, 2 = z)
+     * @param axisSign         the sign of the normal of the face
+     * @param sameSize         whether to return a node of the same size as this
+     *                         node or also allow returning a node of a larger size.
+     * @param largestSkippable whether to return a skippable node even if it is
+     *                         larger than this node
      * @return The same-size octree node adjacent to the given face of this node, or
      *         null if there is no such node
      */
-    public Octree getFaceAdjacent(int axisIndex, int axisSign, boolean sameSize) {
-        if (parent == null) {
+    public Octree getFaceAdjacent(int axisIndex, int axisSign, boolean sameSize, boolean largestSkippable) {
+        if (this.parent == null) {
             // nothing is adjacent to the root node
             return null;
         }
 
         // TODO: what happens in the case of the second-level octree? (parent's selector
         // is 1 << 31)
-        int offset = axisSign > 0 ? size : -size;
+        int offset = axisSign > 0 ? this.size : -this.size;
 
         // compute the origin of the mirrored volume. Looking for an octree node of the
         // same size as this node with these coordinates as its origin will give the
@@ -294,9 +449,9 @@ public class Octree {
         // Furthermore, if it was smaller than this node, it would be contained within
         // another node that is the same size as this octree node. Thus such a node
         // exists and can be found with these coordinates.
-        int targetX = x;
-        int targetY = y;
-        int targetZ = z;
+        int targetX = this.x;
+        int targetY = this.y;
+        int targetZ = this.z;
         switch (axisIndex) {
             case 0:
                 targetX += offset;
@@ -318,7 +473,7 @@ public class Octree {
 
         // step downwards until the node of exactly the mirrored volume is found or
         // there is no such node
-        while (mirrorVolume.ignoredBits > ignoredBits) {
+        while (mirrorVolume.ignoredBits > this.ignoredBits) {
             int index = mirrorVolume.getIndexFor(targetX, targetY, targetZ);
             Octree child = mirrorVolume.children[index];
             if (child == null) {
@@ -333,6 +488,11 @@ public class Octree {
                 }
             } else {
                 mirrorVolume = child;
+
+                // return early if we found a skippable node and we're allowed to do so
+                if (largestSkippable && mirrorVolume.isSkippable()) {
+                    break;
+                }
             }
         }
 
@@ -350,14 +510,14 @@ public class Octree {
      *         there is none
      */
     public Octree getAdjacentCommonParent(int targetX, int targetY, int targetZ) {
-        if (parent == null) {
+        if (this.parent == null) {
             // nothing is adjacent to the root node
             return null;
         }
 
         // find the next parent that contains the volume of this octree but mirrored
         // along the face we're interested in
-        Octree mirrorVolume = parent;
+        Octree mirrorVolume = this.parent;
         while (!mirrorVolume.contains(targetX, targetY, targetZ)) {
             mirrorVolume = mirrorVolume.parent;
             if (mirrorVolume == null) {
@@ -370,9 +530,9 @@ public class Octree {
 
     public Octree getAdjacentCommonParent(int axisIndex, int axisSign) {
         int nudge = axisSign > 0 ? 1 : -1; // only 1 needed for common parent
-        int targetX = x;
-        int targetY = y;
-        int targetZ = z;
+        int targetX = this.x;
+        int targetY = this.y;
+        int targetZ = this.z;
         switch (axisIndex) {
             case 0:
                 targetX += nudge;
@@ -387,24 +547,31 @@ public class Octree {
         return getAdjacentCommonParent(targetX, targetY, targetZ);
     }
 
-    public Octree getFaceAdjacent(Direction direction, boolean sameSize) {
-        return getFaceAdjacent(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction), sameSize);
+    public Octree getFaceAdjacent(Direction direction, boolean sameSize, boolean largestSkippable) {
+        return getFaceAdjacent(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction), sameSize,
+                largestSkippable);
     }
 
-    // indexes for each of the following 4-bit masks (1 each direction)
-    // 01010101, 10101010,
-    // 00110011, 11001100,
-    // 00001111, 11110000,
+    // indexes for each of the following 4-item bit masks (1 each direction)
+    // 10101010, 01010101,
+    // 11001100, 00110011,
+    // 11110000, 00001111,
     private static final int[] FACE_INDICES = new int[] {
             0x00020406, 0x01030507, 0x00010405, 0x02030607, 0x00010203, 0x04050607 };
 
-    // TODO: cache this result?
-    // TODO: if not, make it easier to iterate render sections without allocating a
-    // list. maybe pass in a Consumer<RenderSection>?
-    private void getFaceSections(Collection<RenderSection> accumulator, int axisIndex, int axisSign) {
-        if (isLeaf()) {
+    /**
+     * Iterates over all octree leaf nodes that touch the given face of this node.
+     *
+     * @param accumulator     the consumer that will be called for each leaf node
+     * @param axisIndex       the axis index of the face
+     * @param axisSign        the axis sign of the face
+     * @param acceptSkippable whether to consume skippable non-leaf nodes and don't
+     *                        consider their children
+     */
+    public void iterateFaceNodes(Consumer<Octree> accumulator, int axisIndex, int axisSign, boolean acceptSkippable) {
+        if (isLeaf() || acceptSkippable && isSkippable()) {
             // this is a leaf node, return the section because it touches all faces
-            accumulator.add(section);
+            accumulator.accept(this);
             return;
         }
 
@@ -413,11 +580,26 @@ public class Octree {
         // convert the axis sign into either 0 (if negative) or 1 (if positive)
         int indices = FACE_INDICES[(axisIndex << 1) + (axisSign > 0 ? 1 : 0)];
         for (int i = 0; i < 4; i++) {
-            Octree child = children[indices & 0b111];
+            Octree child = this.children[indices & 0b111];
             if (child != null) {
-                child.getFaceSections(accumulator, axisIndex, axisSign);
+                child.iterateFaceNodes(accumulator, axisIndex, axisSign, acceptSkippable);
             }
             indices >>= 8;
+        }
+    }
+
+    public void iterateFaceNodes(Consumer<Octree> accumulator, Direction direction, boolean acceptSkippable) {
+        iterateFaceNodes(accumulator,
+                DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction),
+                acceptSkippable);
+    }
+
+    public void iterateFaceAdjacentNodes(Consumer<Octree> accumulator, Direction direction, boolean acceptSkippable) {
+        int axisIndex = DirectionUtil.getAxisIndex(direction);
+        int axisSign = DirectionUtil.getAxisSign(direction);
+        Octree faceAdjacent = getFaceAdjacent(axisIndex, axisSign, true, acceptSkippable);
+        if (faceAdjacent != null) {
+            faceAdjacent.iterateFaceNodes(accumulator, axisIndex, -axisSign, acceptSkippable);
         }
     }
 
@@ -429,25 +611,28 @@ public class Octree {
      * @param axisSign  the sign of the normal of the face
      * @return a list of sections adjacent to the given face
      */
-    public Collection<RenderSection> getFaceSections(int axisIndex, int axisSign) {
-        Collection<RenderSection> accumulator = new ArrayList<>();
-        getFaceSections(accumulator, axisIndex, axisSign);
+    public Collection<Octree> getFaceNodes(int axisIndex, int axisSign, boolean acceptSkippable) {
+        Collection<Octree> accumulator = new ObjectArrayList<>();
+        iterateFaceNodes(accumulator::add, axisIndex, axisSign, acceptSkippable);
         return accumulator;
     }
 
-    public Collection<RenderSection> getFaceSections(Direction direction) {
-        return getFaceSections(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction));
+    public Collection<Octree> getFaceNodes(Direction direction, boolean acceptSkippable) {
+        Collection<Octree> accumulator = new ObjectArrayList<>();
+        iterateFaceNodes(accumulator::add, direction, acceptSkippable);
+        return accumulator;
     }
 
-    public Collection<RenderSection> getFaceAdjacentSections(int axisIndex, int axisSign) {
-        Octree faceAdjacent = getFaceAdjacent(axisIndex, axisSign, true);
+    public Collection<Octree> getFaceAdjacentNodes(int axisIndex, int axisSign, boolean acceptSkippable) {
+        Octree faceAdjacent = getFaceAdjacent(axisIndex, axisSign, true, false);
         if (faceAdjacent == null) {
             return Collections.emptyList();
         }
-        return faceAdjacent.getFaceSections(axisIndex, -axisSign);
+        return faceAdjacent.getFaceNodes(axisIndex, -axisSign, acceptSkippable);
     }
 
-    public Collection<RenderSection> getFaceAdjacentSections(Direction direction) {
-        return getFaceAdjacentSections(DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction));
+    public Collection<Octree> getFaceAdjacentNodes(Direction direction, boolean acceptSkippable) {
+        return getFaceAdjacentNodes(
+                DirectionUtil.getAxisIndex(direction), DirectionUtil.getAxisSign(direction), acceptSkippable);
     }
 }

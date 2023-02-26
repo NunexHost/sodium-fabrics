@@ -4,9 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.PriorityQueue;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectList;
+import it.unimi.dsi.fastutil.objects.*;
 import me.jellysquid.mods.sodium.client.SodiumClientMod;
 import me.jellysquid.mods.sodium.client.gl.device.CommandList;
 import me.jellysquid.mods.sodium.client.gl.device.RenderDevice;
@@ -71,10 +69,11 @@ public class RenderSectionManager {
     private final ClonedChunkSectionCache sectionCache;
 
     private final Long2ReferenceMap<RenderSection> sections = new Long2ReferenceOpenHashMap<>();
+    public final Octree root = Octree.newRoot();
 
     private final Map<ChunkUpdateType, PriorityQueue<RenderSection>> rebuildQueues = new EnumMap<>(ChunkUpdateType.class);
 
-    private final ChunkGraphIterationQueue iterationQueue = new ChunkGraphIterationQueue();
+    private final ObjectHeapPriorityQueue<QueueEntry> iterationQueue = new ObjectHeapPriorityQueue<>(Comparator.comparing(QueueEntry::getDistance));
 
     private final ObjectList<RenderSection> tickableChunks = new ObjectArrayList<>();
     private final ObjectList<BlockEntity> visibleBlockEntities = new ObjectArrayList<>();
@@ -244,6 +243,7 @@ public class RenderSectionManager {
         RenderSection render = new RenderSection(this.worldRenderer, x, y, z);
 
         this.sections.put(ChunkSectionPos.asLong(x, y, z), render);
+        root.setSection(render);
 
         Chunk chunk = this.world.getChunk(x, z);
         ChunkSection section = chunk.getSectionArray()[this.world.sectionCoordToIndex(y)];
@@ -261,6 +261,7 @@ public class RenderSectionManager {
 
     private boolean unloadSection(int x, int y, int z) {
         RenderSection chunk = this.sections.remove(ChunkSectionPos.asLong(x, y, z));
+        root.removeSection(chunk);
 
         RenderRegion region = this.regions.getRegion(RenderRegion.getRegionKeyForChunk(x, y, z));
         if (region != null) {
@@ -295,15 +296,12 @@ public class RenderSectionManager {
         }
     }
 
-    public boolean isSectionVisible(int x, int y, int z) {
-        RenderSection render = this.getRenderSection(x, y, z);
-
-        if (render == null) {
-            return false;
-        }
-
-        return render.getGraphInfo()
-                .getLastVisibleFrame() == this.currentFrame;
+    /**
+     * Checks if the sections contained within (include of both bounds) the given
+     * section-space box are visible.
+     */
+    public boolean isSectionBoxVisible(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        return this.root.isBoxVisible(this.currentFrame, minX, minY, minZ, maxX, maxY, maxZ);
     }
 
     public void updateChunks() {
@@ -431,7 +429,8 @@ public class RenderSectionManager {
     }
 
     public boolean isGraphDirty() {
-        return this.needsUpdate;
+        // return this.needsUpdate;
+        return true;
     }
 
     public ChunkBuilder getBuilder() {
@@ -485,11 +484,14 @@ public class RenderSectionManager {
         }
     }
 
-    private boolean isWithinRenderDistance(RenderSection adj) {
-        int x = Math.abs(adj.getChunkX() - this.centerChunkX);
-        int z = Math.abs(adj.getChunkZ() - this.centerChunkZ);
+    private boolean isWithinRenderDistance(Octree node) {
+        int xMin = Math.abs(node.x - this.centerChunkX);
+        int xMax = Math.abs(node.maxX - this.centerChunkX);
+        int zMin = Math.abs(node.z - this.centerChunkZ);
+        int zMax = Math.abs(node.maxZ - this.centerChunkZ);
 
-        return x <= this.renderDistance && z <= this.renderDistance;
+        return (xMin <= this.renderDistance || xMax <= this.renderDistance)
+            && (zMin <= this.renderDistance || zMax <= this.renderDistance);
     }
 
     /**
@@ -647,17 +649,15 @@ public class RenderSectionManager {
         if (rootRender != null) {
             ChunkGraphInfo rootInfo = rootRender.getGraphInfo();
             rootInfo.resetCullingState();
-            rootInfo.setLastVisibleFrame(frame);
 
             if (spectator && this.world.getBlockState(origin).isOpaqueFullCube(this.world, origin)) {
                 this.useOcclusionCulling = false;
             }
 
-            this.addVisible(list, rootRender, null);
+            rootRender.octreeLeaf.setLastVisibleFrame(frame);
+            this.addVisible(list, rootRender.octreeLeaf, null, 0);
         } else {
             chunkY = MathHelper.clamp(origin.getY() >> 4, this.world.getBottomSectionCoord(), this.world.getTopSectionCoord() - 1);
-
-            List<RenderSection> sorted = new ArrayList<>();
 
             for (int x2 = -this.renderDistance; x2 <= this.renderDistance; ++x2) {
                 for (int z2 = -this.renderDistance; z2 <= this.renderDistance; ++z2) {
@@ -669,21 +669,15 @@ public class RenderSectionManager {
 
                     ChunkGraphInfo info = render.getGraphInfo();
 
-                    if (isFrustumCulled(render)) {
+                    if (isFrustumCulled(render.getChunkX(), render.getChunkY(), render.getChunkZ(), 16)) {
                         continue;
                     }
 
                     info.resetCullingState();
-                    info.setLastVisibleFrame(frame);
+                    render.octreeLeaf.setLastVisibleFrame(frame);
 
-                    sorted.add(render);
+                    this.addVisible(list, render.octreeLeaf, null, render.getSquaredDistance(origin));
                 }
-            }
-
-            sorted.sort(Comparator.comparingDouble(node -> node.getSquaredDistance(origin)));
-
-            for (RenderSection render : sorted) {
-                this.addVisible(list, render, null);
             }
         }
     }
@@ -739,17 +733,13 @@ public class RenderSectionManager {
         }
     }
 
-    private boolean isFrustumCulled(RenderSection render) {
+    private boolean isFrustumCulled(float x, float y, float z, float size) {
         frustumCheckPotentialCount++;
-
-        float x = render.getOriginX();
-        float y = render.getOriginY();
-        float z = render.getOriginZ();
 
         // check if within a visible box to avoid checking the frustum
         if (!isVisibleInBox(x, y, z)) {
             frustumCheckActualCount++;
-            if(!frustum.isBoxVisible(x, y, z, x + 16.0f, y + 16.0f, z + 16.0f)) {
+            if(!frustum.isBoxVisible(x, y, z, x + size, y + size, z + size)) {
                 return true;
             }
 
@@ -763,6 +753,22 @@ public class RenderSectionManager {
         return false;
     }
 
+    public class QueueEntry {
+        public final Octree node;
+        public final Direction flow;
+        public final double distance;
+ 
+        public QueueEntry(Octree node, Direction flow, double distance) {
+            this.node = node;
+            this.flow = flow;
+            this.distance = distance;
+        }
+
+        public double getDistance() {
+            return distance;
+        }
+    }
+
     /**
      * This is the main BFS search loop. It iterates over the queue of chunks to be
      * processed until it is empty. For each iterated chunk it checks adjacent
@@ -774,24 +780,39 @@ public class RenderSectionManager {
     private void iterateChunks(ChunkRenderListBuilder list, Camera camera, Frustum frustum, int frame, boolean spectator) {
         this.initSearch(list, camera, frustum, frame, spectator);
 
-        ChunkGraphIterationQueue queue = this.iterationQueue;
+        ObjectHeapPriorityQueue<QueueEntry> queue = this.iterationQueue;
 
-        for (int i = 0; i < queue.size(); i++) {
-            RenderSection section = queue.getRender(i);
-            Direction flow = queue.getDirection(i);
+        // idea: find the largest skippable face adjacent octree and add it to the queue for each direction we want to explore. if it doesn't exist (the adjacent section isn't empty), add the adjacent section (its octree leaf) instead
 
-            this.schedulePendingUpdates(section);
+        while (!queue.isEmpty()) {
+            QueueEntry entry = queue.dequeue();
+            Octree node = entry.node;
+            Direction flow = entry.flow;
+            double distance = entry.distance;
+
+            // TODO: temporary?
+            // node.iterateUnskippableTree((subNode) -> {
+            //     schedulePendingUpdates(subNode.section);
+            // });
+            if (node.isLeaf()) {
+                schedulePendingUpdates(node.section);
+            }
 
             for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
-                if (this.isCulled(section.getGraphInfo(), flow, dir)) {
-                    continue;
+                // TODO: deal with this only working sometimes
+                if (node.isLeaf()) {
+                    RenderSection section = node.section;
+                    if (this.isCulled(section.getGraphInfo(), flow, dir)) {
+                        continue;
+                    }
                 }
 
-                RenderSection adj = section.getAdjacent(dir);
-
-                if (adj != null && this.isWithinRenderDistance(adj)) {
-                    this.bfsEnqueue(list, section, adj, DirectionUtil.getOpposite(dir));
-                }
+                // iterate the adjacent nodes, skipping over the contents of skippable nodes
+                node.iterateFaceAdjacentNodes((faceAdjacent) -> {
+                    if (this.isWithinRenderDistance(faceAdjacent)) {
+                        this.bfsEnqueue(list, node, faceAdjacent, DirectionUtil.getOpposite(dir), distance);
+                    }
+                }, dir, true);
             }
         }
     }
@@ -804,25 +825,37 @@ public class RenderSectionManager {
      * visible. The culling state is updated with the culling state of the parent
      * section that led to this section being added to the queue.
      */
-    private void bfsEnqueue(ChunkRenderListBuilder list, RenderSection parent, RenderSection render, Direction flow) {
-        ChunkGraphInfo info = render.getGraphInfo();
-
-        if (info.getLastVisibleFrame() == this.currentFrame) {
+    private void bfsEnqueue(ChunkRenderListBuilder list, Octree parent, Octree node, Direction flow, double distance) {
+        if (node.getSelfVisibleInFrame(currentFrame)) {
             return;
         }
 
-        if (isFrustumCulled(render)) {
+        if (isFrustumCulled(node.x << 4, node.y << 4, node.z << 4, node.size << 4)) {
             return;
         }
 
-        info.setLastVisibleFrame(this.currentFrame);
-        info.setCullingState(parent.getGraphInfo().getCullingState(), flow);
+        node.setLastVisibleFrame(currentFrame);
 
-        this.addVisible(list, render, flow);
+        if (parent.isLeaf() && node.isLeaf()) {
+            ChunkGraphInfo info = node.section.getGraphInfo();
+            info.setCullingState(parent.section.getGraphInfo().getCullingState(), flow);
+        }
+
+        // TODO: right distance metric? are center points of octree nodes good?
+        this.addVisible(list, node, flow, distance + Octree.manhattanDistance(parent, node));
     }
 
-    private void addVisible(ChunkRenderListBuilder list, RenderSection render, Direction flow) {
-        this.iterationQueue.add(render, flow);
+    private void addVisible(ChunkRenderListBuilder list, Octree node, Direction flow, double distance) {
+        this.iterationQueue.enqueue(new QueueEntry(node, flow, distance));
+
+        // full content iteration of the octree node isn't necessary if all
+        // octree nodes are either leaf nodes or are fully skippable
+        // TODO: change this when the BFS also explores unskippable nodes
+        // node.iterateUnskippableTree((octree) -> {
+        if (!node.isLeaf()) {
+            return;
+        }
+        RenderSection render = node.section;
 
         if (this.useFogCulling && render.getSquaredDistanceXZ(this.cameraX, this.cameraZ) >= this.fogRenderCutoff) {
             return;
@@ -891,7 +924,7 @@ public class RenderSectionManager {
         list.add(String.format("%s chunk frustum checks actual", frustumCheckActualCount));
         list.add(String.format("%s total frustum checks", totalFrustumChecks));
         list.add(String.format("%s chunk frustum checks potential", frustumCheckPotentialCount));
-        list.add(String.format("%d%% fewer frustum checks", 100 - 100 * totalFrustumChecks / frustumCheckPotentialCount));
+        list.add(String.format("%d%% fewer frustum checks", frustumCheckPotentialCount == 0 ? 0 : 100 - 100 * totalFrustumChecks / frustumCheckPotentialCount));
         list.add(String.format("%s additional box frustum checks", frustumCheckBoxCount));
         list.add(String.format("%s box tests", boxTestCount));
         list.add(String.format("%s boxes cleared",clearedBoxes));

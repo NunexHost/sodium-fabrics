@@ -12,22 +12,12 @@ public class ChunkGraphInfo {
 
     private final RenderSection parent;
 
-    private int lastVisibleFrame = -1;
-
     private long visibilityData;
     private byte cullingState;
 
     public ChunkGraphInfo(RenderSection parent) {
         this.parent = parent;
         this.visibilityData = DEFAULT_VISIBILITY_DATA;
-    }
-
-    public void setLastVisibleFrame(int frame) {
-        this.lastVisibleFrame = frame;
-    }
-
-    public int getLastVisibleFrame() {
-        return this.lastVisibleFrame;
     }
 
     public void setOcclusionData(ChunkOcclusionData occlusionData) {

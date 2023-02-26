@@ -109,7 +109,9 @@ public class RenderSection {
         this.tickable = !info.getAnimatedSprites().isEmpty();
         this.flags = info.getFlags();
 
-        octreeLeaf.updateSectionSkippable();
+        if (octreeLeaf != null) {
+            octreeLeaf.updateSectionSkippable();
+        }
     }
 
     public boolean hasEmptyData() {

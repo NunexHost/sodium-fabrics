@@ -2,7 +2,8 @@ package me.jellysquid.mods.sodium.client.render.chunk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 
@@ -144,9 +145,13 @@ public class OctreeTest {
         for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
             RenderSection adj = rs(x + dir.getOffsetX(), y + dir.getOffsetY(), z + dir.getOffsetZ());
             root.setSection(adj);
-            assertEquals(root.getSectionOctree(adj), rsOct.getFaceAdjacent(dir, true));
+            assertEquals(root.getSectionOctree(adj), rsOct.getFaceAdjacent(dir, true, false));
             root.removeSection(adj);
         }
+    }
+
+    private static Set<Octree> octsOf(RenderSection... sections) {
+        return Arrays.stream(sections).map((rs) -> rs.octreeLeaf).collect(Collectors.toSet());
     }
 
     @Test
@@ -167,15 +172,15 @@ public class OctreeTest {
         tree.setSection(rs5);
 
         for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
-        assertFalse(tree.getFaceSections(dir).contains(rs0));
+        assertFalse(tree.getFaceNodes(dir, false).contains(rs0.octreeLeaf));
         }
 
-        assertEquals(Set.of(rs1, rs4), Set.copyOf(tree.getFaceSections(0, -1)));
-        assertEquals(Set.of(rs5), Set.copyOf(tree.getFaceSections(0, 1)));
-        assertEquals(Set.of(rs3), Set.copyOf(tree.getFaceSections(1, -1)));
-        assertEquals(Set.of(rs2), Set.copyOf(tree.getFaceSections(1, 1)));
-        assertEquals(Set.of(), Set.copyOf(tree.getFaceSections(2, -1)));
-        assertEquals(Set.of(rs1, rs2, rs5), Set.copyOf(tree.getFaceSections(2, 1)));
+        assertEquals(octsOf(rs1, rs4), Set.copyOf(tree.getFaceNodes(0, -1, false)));
+        assertEquals(octsOf(rs5), Set.copyOf(tree.getFaceNodes(0, 1, false)));
+        assertEquals(octsOf(rs3), Set.copyOf(tree.getFaceNodes(1, -1, false)));
+        assertEquals(octsOf(rs2), Set.copyOf(tree.getFaceNodes(1, 1, false)));
+        assertEquals(octsOf(), Set.copyOf(tree.getFaceNodes(2, -1, false)));
+        assertEquals(octsOf(rs1, rs2, rs5), Set.copyOf(tree.getFaceNodes(2, 1, false)));
     }
 
     @Test
@@ -199,26 +204,26 @@ public class OctreeTest {
         Octree oct4 = rs4.octreeLeaf;
         Octree oct5 = rs5.octreeLeaf;
 
-        assertEquals(Set.of(rs4), Set.copyOf(oct0.getFaceAdjacentSections(0, -1)));
-        assertEquals(Set.of(rs0), Set.copyOf(oct4.getFaceAdjacentSections(0, 1)));
-        assertEquals(Set.of(), Set.copyOf(tree.getFaceAdjacentSections(1, -1)));
-        assertEquals(Set.of(), Set.copyOf(tree.getFaceAdjacentSections(0, 1)));
-        assertEquals(Set.of(), Set.copyOf(oct1.getFaceAdjacentSections(0, -1)));
-        assertEquals(Set.of(), Set.copyOf(oct3.parent.getFaceAdjacentSections(0, 1)));
-        assertEquals(Set.of(rs1), Set.copyOf(oct3.parent.getFaceAdjacentSections(2, 1)));
-        assertEquals(Set.of(rs3), Set.copyOf(oct1.parent.getFaceAdjacentSections(2, -1)));
-        assertNotEquals(Set.of(rs0), Set.copyOf(oct1.parent.getFaceAdjacentSections(1, -1)));
-        assertNotEquals(Set.of(rs0), Set.copyOf(oct1.parent.getFaceAdjacentSections(1, 1)));
+        assertEquals(octsOf(rs4), Set.copyOf(oct0.getFaceAdjacentNodes(0, -1, false)));
+        assertEquals(octsOf(rs0), Set.copyOf(oct4.getFaceAdjacentNodes(0, 1, false)));
+        assertEquals(octsOf(), Set.copyOf(tree.getFaceAdjacentNodes(1, -1, false)));
+        assertEquals(octsOf(), Set.copyOf(tree.getFaceAdjacentNodes(0, 1, false)));
+        assertEquals(octsOf(), Set.copyOf(oct1.getFaceAdjacentNodes(0, -1, false)));
+        assertEquals(octsOf(), Set.copyOf(oct3.parent.getFaceAdjacentNodes(0, 1, false)));
+        assertEquals(octsOf(rs1), Set.copyOf(oct3.parent.getFaceAdjacentNodes(2, 1, false)));
+        assertEquals(octsOf(rs3), Set.copyOf(oct1.parent.getFaceAdjacentNodes(2, -1, false)));
+        assertNotEquals(octsOf(rs0), Set.copyOf(oct1.parent.getFaceAdjacentNodes(1, -1, false)));
+        assertNotEquals(octsOf(rs0), Set.copyOf(oct1.parent.getFaceAdjacentNodes(1, 1, false)));
 
-        assertEquals(oct0.parent, oct1.parent.getFaceAdjacent(1, 1, true));
-        assertEquals(oct1.parent, oct0.parent.getFaceAdjacent(1, -1, true));
-        assertEquals(oct1, oct4.getFaceAdjacent(1, -1, true));
-        assertEquals(oct1, oct4.getFaceAdjacent(1, -1, false));
-        assertEquals(oct0, oct4.getFaceAdjacent(0, 1, true));
-        assertEquals(oct3.parent, oct1.getFaceAdjacent(2, -1, false));
-        assertNull(oct1.getFaceAdjacent(2, -1, true));
-        assertNull(oct5.getFaceAdjacent(0, 1, false));
-        assertNull(oct5.getFaceAdjacent(0, 1, true));
+        assertEquals(oct0.parent, oct1.parent.getFaceAdjacent(1, 1, true, false));
+        assertEquals(oct1.parent, oct0.parent.getFaceAdjacent(1, -1, true, false));
+        assertEquals(oct1, oct4.getFaceAdjacent(1, -1, true, false));
+        assertEquals(oct1, oct4.getFaceAdjacent(1, -1, false, false));
+        assertEquals(oct0, oct4.getFaceAdjacent(0, 1, true, false));
+        assertEquals(oct3.parent, oct1.getFaceAdjacent(2, -1, false, false));
+        assertNull(oct1.getFaceAdjacent(2, -1, true, false));
+        assertNull(oct5.getFaceAdjacent(0, 1, false, false));
+        assertNull(oct5.getFaceAdjacent(0, 1, true, false));
     }
 
     @Test

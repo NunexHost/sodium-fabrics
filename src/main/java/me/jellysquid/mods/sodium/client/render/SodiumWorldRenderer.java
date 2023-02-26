@@ -48,7 +48,7 @@ public class SodiumWorldRenderer {
 
     private final Set<BlockEntity> globalBlockEntities = new ObjectOpenHashSet<>();
 
-    private RenderSectionManager renderSectionManager;
+    public RenderSectionManager renderSectionManager;
     private ChunkTracker chunkTracker;
 
     /**
@@ -339,25 +339,14 @@ public class SodiumWorldRenderer {
             return true;
         }
 
-        int minX = ChunkSectionPos.getSectionCoord(x1 - 0.5D);
-        int minY = ChunkSectionPos.getSectionCoord(y1 - 0.5D);
-        int minZ = ChunkSectionPos.getSectionCoord(z1 - 0.5D);
-
-        int maxX = ChunkSectionPos.getSectionCoord(x2 + 0.5D);
-        int maxY = ChunkSectionPos.getSectionCoord(y2 + 0.5D);
-        int maxZ = ChunkSectionPos.getSectionCoord(z2 + 0.5D);
-
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                for (int y = minY; y <= maxY; y++) {
-                    if (this.renderSectionManager.isSectionVisible(x, y, z)) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
+        return this.renderSectionManager.isSectionBoxVisible(
+            ChunkSectionPos.getSectionCoord(x1 - 0.5D),
+            ChunkSectionPos.getSectionCoord(y1 - 0.5D),
+            ChunkSectionPos.getSectionCoord(z1 - 0.5D),
+            ChunkSectionPos.getSectionCoord(x2 + 0.5D),
+            ChunkSectionPos.getSectionCoord(y2 + 0.5D),
+            ChunkSectionPos.getSectionCoord(z2 + 0.5D)
+        );
     }
 
     public String getChunksDebugString() {
