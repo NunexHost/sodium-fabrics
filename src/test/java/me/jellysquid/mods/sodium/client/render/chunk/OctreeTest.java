@@ -3,9 +3,11 @@ package me.jellysquid.mods.sodium.client.render.chunk;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.stream.*;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.*;
 
 import me.jellysquid.mods.sodium.common.util.DirectionUtil;
 import net.minecraft.util.math.Direction;
@@ -119,10 +121,11 @@ public class OctreeTest {
         assertEquals(32, root.ignoredBits);
     }
 
-    @Test
-    void testGetFaceSectionsLeaf() {
+    @ParameterizedTest
+    @MethodSource("getSectionCases")
+    void testGetFaceSectionsLeaf(int x, int y, int z) {
         Octree root = Octree.newRoot();
-        RenderSection rs = rs(1, 2, 3);
+        RenderSection rs = rs(x, y, z);
         root.setSection(rs);
 
         assertEquals(rs, root.getSectionOctree(rs).section);
@@ -132,12 +135,10 @@ public class OctreeTest {
         assertEquals(rs, root.getSectionOctree(rs).section);
     }
 
-    @Test
-    void testGetFaceAdjacent() {
+    @ParameterizedTest
+    @MethodSource("getSectionCases")
+    void testGetFaceAdjacent(int x, int y, int z) {
         Octree root = Octree.newRoot();
-        int x = 1;
-        int y = 2;
-        int z = 3;
         RenderSection rs = rs(x, y, z);
         root.setSection(rs);
         Octree rsOct = root.getSectionOctree(rs);
@@ -148,6 +149,19 @@ public class OctreeTest {
             assertEquals(root.getSectionOctree(adj), rsOct.getFaceAdjacent(dir, true, false));
             root.removeSection(adj);
         }
+    }
+
+    static Stream<Arguments> getSectionCases() {
+        return Stream.of(
+            Arguments.of(1, 2, 3),
+            Arguments.of(0, 2, 3),
+            Arguments.of(1, 1, 3),
+            Arguments.of(-1, -1, -3),
+            Arguments.of(-10, -1, -3),
+            Arguments.of(100, 100, -100),
+            Arguments.of(0, 0, 0),
+            Arguments.of(-1, 2, 0)
+        );
     }
 
     private static Set<Octree> octsOf(RenderSection... sections) {
@@ -172,7 +186,7 @@ public class OctreeTest {
         tree.setSection(rs5);
 
         for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
-        assertFalse(tree.getFaceNodes(dir, false).contains(rs0.octreeLeaf));
+            assertFalse(tree.getFaceNodes(dir, false).contains(rs0.octreeLeaf));
         }
 
         assertEquals(octsOf(rs1, rs4), Set.copyOf(tree.getFaceNodes(0, -1, false)));
@@ -259,10 +273,5 @@ public class OctreeTest {
         rs4.octreeLeaf.setLeafSkippable(false);
         rs5.octreeLeaf.setLeafSkippable(false);
         assertEquals(0, rs0.octreeLeaf.parent.parent.skippableChildren);
-    }
-
-    @Test
-    void testAdjacentNegativeHandling() {
-        // TODO: test to verify/find out if the adjacency features work across the positive/negative boundary
     }
 }

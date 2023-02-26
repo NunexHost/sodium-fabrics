@@ -25,19 +25,27 @@ import net.minecraft.util.math.Direction;
  * connected. Solution: only consider an octree node connected from one face to
  * another if all sections on that face connect to all sections of the other
  * face.
+ * 
+ * See OctreeTest: There appears to be no problem handling transitions between
+ * positive and negative numbers in testGetFaceAdjacent.
  *
  * TODO: acceleration structure to get from parent to children faster:
  * references to the highest/largest/closest child that has more than 1 child
- * anywhere in the subtree. Idea: since iterating over all children would be a
- * lot and doing it dynamically is also a lot of overhead because having a
- * packpointer would mean a collection at the pointed-to child, limiting when
- * and how often a downwards pointer is generated could make it still useful.
- * Before doing BFS, an "accelerate pointer now" function could be called that
- * does up to 4*32 iterations (more are likely unnecessary since this is mostly
- * just to skip the large singleton chain near the root or its direct children)
- * of generating down-links to the next relevant child. Problem: when sections
- * are added or removed, would these links being wrong cause problems for the
- * addition or removal process itself?
+ * anywhere in the subtree. When a previously skipped single-child child node
+ * gets a second child, all parents that have a pointer to skip it need to be
+ * told to not skip it anymore. This would require iterating up the tree until a
+ * node with two children (which doesn't have this type of pointer) is found.
+ * 
+ * However, the constraint that children must be exactly 1 level smaller than
+ * the parent could be loosened: then children that only have one child could be
+ * omitted. The resulting tree would be a root node with only children that have
+ * multiple children, thus making it more efficient to traverse. This could make
+ * the logic of iterating children more complicated though, because they are no
+ * longer necessarily space-filling the parent node. In this scenario (but also
+ * with doubly-linked downwards pointer), adding an intermediary child requires
+ * funky moving around and inserting of references. The tree effectively becomes
+ * a doubly-linked tree in which things need to be inserted in between a parent
+ * and a child (and not just branches added as it is currently)
  * 
  * TODO: acceleration structure of indexing the own children array with a
  * separate index array or fields that contain indices for when there are very
@@ -46,6 +54,19 @@ import net.minecraft.util.math.Direction;
  * few children. Idea: just storing an index at which to start iterating (with a
  * completion counter that counts down ownChildCount) would maybe already be
  * effective. (do profiling to see if it's necessary)
+ * 
+ * TODO: ray culling acceleration: keep track of all the fully opaque (or later,
+ * using more complicated visibility traversal) nodes (like skippable counter)
+ * to quickly check if a ray from a chunk to to a the camera position is
+ * blocked. This could even improve bfs because it would actually occlude not
+ * visible sections. A line is blocked by an octree node if it intersects it and
+ * is fully opaque and not if it's fully not-opaque. If the node contains both
+ * opaque and not-opaque sections, the node's children should be checked in the
+ * same way. Problem: each of the section's corners has to be tested, the ones
+ * that are within the outline of the hexagonal (or with fewer corners) frustum
+ * the chunk forms with the camera don't have to be tested since they are
+ * redundant. (figuring out which ones these are may be difficult, but it's
+ * probably possible)
  * 
  * @author douira
  */
@@ -529,7 +550,7 @@ public class Octree {
     }
 
     public Octree getAdjacentCommonParent(int axisIndex, int axisSign) {
-        int nudge = axisSign > 0 ? 1 : -1; // only 1 needed for common parent
+        int nudge = axisSign > 0 ? 1 : -1;
         int targetX = this.x;
         int targetY = this.y;
         int targetZ = this.z;
