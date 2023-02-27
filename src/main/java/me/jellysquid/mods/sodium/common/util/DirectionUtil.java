@@ -18,8 +18,16 @@ public class DirectionUtil {
             .map(Direction::getOpposite)
             .toArray(Direction[]::new);
 
+    private static final int[] OPPOSITE_DIRECTIONS_INT = Arrays.stream(OPPOSITE_DIRECTIONS)
+            .mapToInt(Direction::getId)
+            .toArray();
+
     // Direction#byId is slow in the absence of Lithium
     public static Direction getOpposite(Direction dir) {
         return OPPOSITE_DIRECTIONS[dir.ordinal()];
+    }
+
+    public static int getOpposite(int dir) {
+        return OPPOSITE_DIRECTIONS_INT[dir];
     }
 }

@@ -5,10 +5,15 @@ public class OctoTree {
     protected final byte[] tree;//contains the entire octree
     protected final int layers;
     protected final int level0Offset;
+    protected final int widthMsk;
+
     public OctoTree(int width, int height) {
-        layers = (int) Math.ceil(Math.max(Math.log(width)/Math.log(2), Math.log(height)/Math.log(2)));
+        int widthBits = (int)Math.ceil(Math.log(width)/Math.log(2));
+        int heightBits = (int)Math.ceil(Math.log(height)/Math.log(2));
+        layers = Math.max(widthBits, heightBits);
         tree = new byte[(((1<<(layers)*3)-1)/7)];//(8^(levels)-1)/7
         level0Offset = getOffsetForLevel(0);
+        widthMsk = (1<<layers)-1;
     }
 
     //Level 0 is the start of the leaf nodes, layers - 1 is the root node
