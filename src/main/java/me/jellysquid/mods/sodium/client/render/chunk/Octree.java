@@ -74,6 +74,7 @@ public class Octree {
     // either children or section is null, the other is not null
     public RenderSection section;
     public final Octree[] children;
+    public int firstChildIndex = 0; // index of the first child that is not null
     public int ownChildCount = 0;
 
     public Octree parent; // null for the root node
@@ -237,6 +238,11 @@ public class Octree {
                 child.setParent(this, index);
                 this.ownChildCount++;
                 leaf.updateSectionSkippable();
+
+                // move the first child index down if necessary
+                if (index > this.firstChildIndex) {
+                    this.firstChildIndex = index;
+                }
             }
         }
     }
@@ -272,6 +278,20 @@ public class Octree {
                     this.children[index] = null;
                     child.setParent(null, -1); // for safety, do we need this?
                     this.ownChildCount--;
+
+                    if (this.ownChildCount == 0) {
+                        this.firstChildIndex = 0;
+                    } else if (index == this.firstChildIndex) {
+                        // find the new first child
+                        firstChildIndex++;
+
+                        // increment until we find a non-null child, if there is no child the
+                        // firstChildIndex will be 8 but this node is deleted anyways by the parent so
+                        // it doesn't matter
+                        while (this.firstChildIndex < 8 && this.children[this.firstChildIndex] == null) {
+                            this.firstChildIndex++;
+                        }
+                    }
                 }
             }
         }
@@ -382,13 +402,13 @@ public class Octree {
         // check if the box is visible in any of the children as the box may not
         // intersect any actual render section, even if it does intersect this node,
         // parts of which may be empty.
-        int childCount = this.ownChildCount;
-        for (Octree child : this.children) {
-            if (child != null && child.isBoxVisible(frame, minX, minY, minZ, maxX, maxY, maxZ)) {
-                return true;
-            }
-            if (--childCount == 0) {
-                break;
+        for (int i = this.firstChildIndex, childCount = this.ownChildCount; i < 8 && childCount > 0; i++) {
+            Octree child = this.children[i];
+            if (child != null) {
+                if (child.isBoxVisible(frame, minX, minY, minZ, maxX, maxY, maxZ)) {
+                    return true;
+                }
+                childCount--;
             }
         }
         return false;
@@ -418,13 +438,11 @@ public class Octree {
         if (isLeaf()) {
             consumer.accept(this);
         } else {
-            int childCount = this.ownChildCount;
-            for (Octree child : this.children) {
+            for (int i = this.firstChildIndex, childCount = this.ownChildCount; i < 8 && childCount > 0; i++) {
+                Octree child = this.children[i];
                 if (child != null) {
                     child.iterateWholeTree(consumer);
-                    if (--childCount == 0) {
-                        break;
-                    }
+                    childCount--;
                 }
             }
         }
@@ -437,13 +455,12 @@ public class Octree {
         if (isLeaf()) {
             consumer.accept(this);
         } else {
-            int childCount = this.ownChildCount - this.skippableChildren;
-            for (Octree child : this.children) {
+            for (int i = this.firstChildIndex, childCount = this.ownChildCount - this.skippableChildren; i < 8
+                    && childCount > 0; i++) {
+                Octree child = this.children[i];
                 if (child != null && !child.isSkippable()) {
                     child.iterateUnskippableTree(consumer);
-                    if (--childCount == 0) {
-                        break;
-                    }
+                    childCount--;
                 }
             }
         }
