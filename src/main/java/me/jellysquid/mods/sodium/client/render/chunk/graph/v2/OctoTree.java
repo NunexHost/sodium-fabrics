@@ -4,6 +4,7 @@ package me.jellysquid.mods.sodium.client.render.chunk.graph.v2;
 public class OctoTree {
     protected final byte[] tree;//contains the entire octree
     protected final int layers;
+    protected final int levelBaseOffset;
     protected final int level0Offset;
     protected final int widthMsk;
 
@@ -12,11 +13,13 @@ public class OctoTree {
         int heightBits = (int)Math.ceil(Math.log(height)/Math.log(2));
         layers = Math.max(widthBits, heightBits);
         tree = new byte[(((1<<(layers)*3)-1)/7)];//(8^(levels)-1)/7
+        levelBaseOffset = getOffsetForLevel(-1);
         level0Offset = getOffsetForLevel(0);
         widthMsk = (1<<layers)-1;
     }
 
     //Level 0 is the start of the leaf nodes, layers - 1 is the root node
+    //Level 0 is technically level 1 as level 0 is just the bottom of the octree, level -1 is the leaf nodes
     protected int getOffsetForLevel(int level) {//It might be faster to make this a const final array
         return getOffsetForLevelUndivided(level)/7;
     }
@@ -26,6 +29,9 @@ public class OctoTree {
     }
 
     protected int getBaseIndex(int level, int leafX, int leafY, int leafZ) {
+        leafX &= widthMsk;
+        leafY &= widthMsk;
+        leafZ &= widthMsk;
         int level2 = layers-level;
         int msk = (1<<level2)-1;
         return ((leafX>>level)&msk)|(((leafZ>>level)&msk)<<level2)|(((leafY>>level)&msk)<<(level2<<1));

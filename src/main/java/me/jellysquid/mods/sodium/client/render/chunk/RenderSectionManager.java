@@ -10,6 +10,7 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import me.jellysquid.mods.sodium.client.SodiumClientMod;
 import me.jellysquid.mods.sodium.client.gl.device.CommandList;
 import me.jellysquid.mods.sodium.client.gl.device.RenderDevice;
+import me.jellysquid.mods.sodium.client.render.chunk.graph.v4.GraphInterface;
 import me.jellysquid.mods.sodium.client.render.chunk.lists.ChunkRenderList;
 import me.jellysquid.mods.sodium.client.render.chunk.lists.ChunkRenderListBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.region.RenderRegion;
@@ -104,6 +105,8 @@ public class RenderSectionManager {
 
     private ChunkRenderList chunkRenderList;
 
+    public final GraphInterface graphSystem;
+
     public RenderSectionManager(SodiumWorldRenderer worldRenderer, ClientWorld world, int renderDistance, CommandList commandList) {
         this.chunkRenderer = new RegionChunkRenderer(RenderDevice.INSTANCE, ChunkMeshFormats.COMPACT);
 
@@ -122,6 +125,7 @@ public class RenderSectionManager {
         for (ChunkUpdateType type : ChunkUpdateType.values()) {
             this.rebuildQueues.put(type, new ObjectArrayFIFOQueue<>());
         }
+        graphSystem = new GraphInterface(this,renderDistance, -4, 20);
 
         this.tracker = this.worldRenderer.getChunkTracker();
     }
@@ -138,6 +142,23 @@ public class RenderSectionManager {
 
         this.setup(camera);
         this.iterateChunks(list, camera, frustum, frame, spectator);
+
+        this.chunkRenderList = list.build();
+        this.needsUpdate = false;
+    }
+
+    public void update2(Camera camera, Frustum frustum, int frame, boolean spectator) {
+        this.resetLists();
+        this.setup(camera);
+        var list = new ChunkRenderListBuilder();
+
+        BlockPos origin = camera.getBlockPos();
+
+        int chunkX = origin.getX() >> 4;
+        int chunkY = origin.getY() >> 4;
+        int chunkZ = origin.getZ() >> 4;
+
+        graphSystem.render(frustum, chunkX, chunkY, chunkZ, list);
 
         this.chunkRenderList = list.build();
         this.needsUpdate = false;
@@ -191,7 +212,7 @@ public class RenderSectionManager {
         }
     }
 
-    private void schedulePendingUpdates(RenderSection section) {
+    public void schedulePendingUpdates(RenderSection section) {
         if (section.getPendingUpdate() == null || !this.tracker.hasMergedFlags(section.getChunkX(), section.getChunkZ(), ChunkStatus.FLAG_ALL)) {
             return;
         }
@@ -205,15 +226,15 @@ public class RenderSectionManager {
         queue.enqueue(section);
     }
 
-    private void addChunkToVisible(ChunkRenderListBuilder list, RenderSection render) {
-        list.add(render);
+    public void addChunkToVisible(ChunkRenderListBuilder list, RenderSection render) {
+        //list.add(render);
 
         if (render.isTickable()) {
             this.tickableChunks.add(render);
         }
     }
 
-    private void addEntitiesToRenderLists(RenderSection render) {
+    public void addEntitiesToRenderLists(RenderSection render) {
         Collection<BlockEntity> blockEntities = render.getData()
                 .getBlockEntities();
 
@@ -251,7 +272,7 @@ public class RenderSectionManager {
 
     private boolean loadSection(int x, int y, int z) {
         RenderSection render = new RenderSection(this.worldRenderer, x, y, z);
-
+        graphSystem.set(render, render.getData());
         this.sections.put(ChunkSectionPos.asLong(x, y, z), render);
 
         Chunk chunk = this.world.getChunk(x, z);
@@ -270,7 +291,7 @@ public class RenderSectionManager {
 
     private boolean unloadSection(int x, int y, int z) {
         RenderSection chunk = this.sections.remove(ChunkSectionPos.asLong(x, y, z));
-
+        graphSystem.delete(chunk);
         RenderRegion region = this.regions.getRegion(RenderRegion.getRegionKeyForChunk(x, y, z));
         if (region != null) {
             region.deleteSection(chunk);
@@ -491,6 +512,7 @@ public class RenderSectionManager {
 
         if (node != null) {
             node.setOcclusionData(data.getOcclusionData());
+            graphSystem.set(node, data);
         }
     }
 
