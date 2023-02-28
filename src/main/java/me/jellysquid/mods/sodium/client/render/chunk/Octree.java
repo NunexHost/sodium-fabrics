@@ -28,32 +28,6 @@ import net.minecraft.util.math.Direction;
  * 
  * See OctreeTest: There appears to be no problem handling transitions between
  * positive and negative numbers in testGetFaceAdjacent.
- *
- * TODO: acceleration structure to get from parent to children faster:
- * references to the highest/largest/closest child that has more than 1 child
- * anywhere in the subtree. When a previously skipped single-child child node
- * gets a second child, all parents that have a pointer to skip it need to be
- * told to not skip it anymore. This would require iterating up the tree until a
- * node with two children (which doesn't have this type of pointer) is found.
- * 
- * However, the constraint that children must be exactly 1 level smaller than
- * the parent could be loosened: then children that only have one child could be
- * omitted. The resulting tree would be a root node with only children that have
- * multiple children, thus making it more efficient to traverse. This could make
- * the logic of iterating children more complicated though, because they are no
- * longer necessarily space-filling the parent node. In this scenario (but also
- * with doubly-linked downwards pointer), adding an intermediary child requires
- * funky moving around and inserting of references. The tree effectively becomes
- * a doubly-linked tree in which things need to be inserted in between a parent
- * and a child (and not just branches added as it is currently)
- * 
- * TODO: acceleration structure of indexing the own children array with a
- * separate index array or fields that contain indices for when there are very
- * few children (1 or 2, or more?) and they are always at a higher position.
- * This would avoid iterating more children than necessary when there are only
- * few children. Idea: just storing an index at which to start iterating (with a
- * completion counter that counts down ownChildCount) would maybe already be
- * effective. (do profiling to see if it's necessary)
  * 
  * TODO: ray culling acceleration: keep track of all the fully opaque (or later,
  * using more complicated visibility traversal) nodes (like skippable counter)
@@ -68,6 +42,8 @@ import net.minecraft.util.math.Direction;
  * redundant. (figuring out which ones these are may be difficult, but it's
  * probably possible)
  * 
+ * // TODO: it seems the bfs is still iterating too many sections. Is the face adjacent calculation somehow broken or is the bfs broken?
+ * 
  * @author douira
  */
 public class Octree {
@@ -78,13 +54,13 @@ public class Octree {
     public int ownChildCount = 0;
 
     public Octree parent; // null for the root node
-    public int indexInParent; // only valid for non-root nodes, TODO: necessary?
 
     public final int ignoredBits;
     public final int filter;
     public final int selector;
     public final int size; // size of the node in sections
     public final int offset;
+    public final int origX, origY, origZ;
     public final int x, y, z;
     // last coordinate at which any child may have its origin, inside the node
     public final int maxX, maxY, maxZ;
@@ -105,9 +81,12 @@ public class Octree {
         this.size = 1;
         this.offset = offset;
 
-        this.x = processCoordinate(section.getChunkX());
-        this.y = processCoordinate(section.getChunkY());
-        this.z = processCoordinate(section.getChunkZ());
+        this.origX = section.getChunkX();
+        this.origY = section.getChunkY();
+        this.origZ = section.getChunkZ();
+        this.x = processCoordinate(this.origX);
+        this.y = processCoordinate(this.origY);
+        this.z = processCoordinate(this.origZ);
         this.maxX = this.x + this.size - 1;
         this.maxY = this.y + this.size - 1;
         this.maxZ = this.z + this.size - 1;
@@ -136,6 +115,9 @@ public class Octree {
         this.x = x & filter;
         this.y = y & filter;
         this.z = z & filter;
+        this.origX = this.x - offset;
+        this.origY = this.y - offset;
+        this.origZ = this.z - offset;
         this.maxX = this.x + this.size - 1;
         this.maxY = this.y + this.size - 1;
         this.maxZ = this.z + this.size - 1;
@@ -153,9 +135,8 @@ public class Octree {
         return new Octree(22, 0, 0, 0, 30_000_000 >> 4);
     }
 
-    public void setParent(Octree parent, int indexInParent) {
+    public void setParent(Octree parent) {
         this.parent = parent;
-        this.indexInParent = indexInParent;
     }
 
     public boolean contains(int x, int y, int z) {
@@ -184,6 +165,18 @@ public class Octree {
         return Math.abs(a.x + (a.size >> 1) - b.x - (b.size >> 1))
                 + Math.abs(a.y + (a.size >> 1) - b.y - (b.size >> 1))
                 + Math.abs(a.z + (a.size >> 1) - b.z - (b.size >> 1));
+    }
+
+    public boolean isWithinDistance(int distance, int centerX, int centerZ) {
+        centerX = processCoordinate(centerX);
+        centerZ = processCoordinate(centerZ);
+        int xMin = Math.abs(this.x - centerX);
+        int xMax = Math.abs(this.maxX - centerX);
+        int zMin = Math.abs(this.z - centerZ);
+        int zMax = Math.abs(this.maxZ - centerZ);
+
+        return (xMin <= distance || xMax <= distance)
+                && (zMin <= distance || zMax <= distance);
     }
 
     private int getIndexFor(int x, int y, int z) {
@@ -219,28 +212,86 @@ public class Octree {
             int index = getIndexFor(rsX, rsY, rsZ);
             Octree existingChild = children[index];
 
-            // if there is already a child, add the section to it instead of directly
+            /**
+             * 1. identify the child the new node has to be put in. if there is none, it can
+             * just go there.
+             * 2. with the existing child, check if the new leaf is contained within it. if
+             * it is, recurse into that node and add it there.
+             * 3. if it isn't contained within the existing child, find the lowest level
+             * that can contain both the existing node and the new leaf.
+             * 4. create this new branch node and insert it in the place of the existing
+             * child.
+             * 5. add the existing child and the new leaf to the new branch node. (make sure
+             * to set parent pointers correctly)
+             */
+
+            // if there is already a child, check if it can contain the new section
             if (existingChild != null) {
-                existingChild.setSection(toSet);
-            } else {
-                // crewate new nested nodes until the section fits (reaches the correct level)
-                Octree leaf = new Octree(toSet, this.offset);
-                Octree child = leaf;
-                while (child.ignoredBits + 1 != this.ignoredBits) {
-                    Octree newParent = new Octree(child.ignoredBits + 1, child.x, child.y, child.z, this.offset);
-                    int indexInParent = newParent.getIndexFor(child);
-                    newParent.children[indexInParent] = child;
-                    child.setParent(newParent, indexInParent);
-                    newParent.ownChildCount = 1;
-                    child = newParent;
+                if (existingChild.contains(rsX, rsY, rsZ)) {
+                    // recurse into the existing child
+                    existingChild.setSection(toSet);
+                    return;
+                } else {
+                    // the existing child is skipping some intermediary nodes, it's replaced with a
+                    // branching node that contains both it and a new leaf for the new section
+                    Octree leaf = new Octree(toSet, this.offset);
+
+                    // find the number of ignored bits at which the leaf and the existing child are
+                    // both contained.
+                    // it will be lower than the own ignored bits of this node
+                    int branchIgnoredBits = this.ignoredBits - 1;
+                    while (true) {
+                        int branchFilter = -1 << branchIgnoredBits;
+                        if ((rsX & branchFilter) != (existingChild.x & branchFilter)
+                                || (rsY & branchFilter) != (existingChild.y & branchFilter)
+                                || (rsZ & branchFilter) != (existingChild.z & branchFilter)) {
+                            break;
+                        }
+                        branchIgnoredBits--;
+                    }
+
+                    // adjust the ignored bits for the branch node back up since once the level at
+                    // which two nodes differ is found, the branch node is a level higher so that it
+                    // can contain both nodes
+                    branchIgnoredBits++;
+
+                    // creating the new branch will generate the right origin coordinates
+                    Octree branch = new Octree(branchIgnoredBits, rsX, rsY, rsZ, this.offset);
+                    this.children[index] = branch;
+                    branch.setParent(this);
+
+                    // add the existing child and the new leaf to the new branch
+                    int existingInBranchIndex = branch.getIndexFor(existingChild);
+                    branch.children[existingInBranchIndex] = existingChild;
+                    existingChild.setParent(branch);
+                    int newInBranchIndex = branch.getIndexFor(leaf);
+                    branch.children[newInBranchIndex] = leaf;
+                    leaf.setParent(branch);
+                    branch.ownChildCount = 2;
+                    if (existingInBranchIndex == newInBranchIndex) {
+                        throw new IllegalStateException("Two children with the same index in a branch node");
+                    }
+                    branch.firstChildIndex = Math.min(existingInBranchIndex, newInBranchIndex);
+
+                    // copy skippable to the branch node, then propagate the leaf to update it
+                    branch.skippableChildren = this.skippableChildren;
+                    // TODO: just switch to full visibility data merging instead.
+                    leaf.updateSectionSkippable();
+
+                    // TODO: why does the root node sometimes only have a single child?
                 }
-                this.children[index] = child;
-                child.setParent(this, index);
+            } else {
+                // there is no existing child, so we can just add the new leaf to this node
+                // directly
+                Octree leaf = new Octree(toSet, this.offset);
+                this.children[index] = leaf;
+                leaf.setParent(this);
                 this.ownChildCount++;
                 leaf.updateSectionSkippable();
 
-                // move the first child index down if necessary
-                if (index > this.firstChildIndex) {
+                // move the first child index down if necessary,
+                // only expand the first child index downards, upwards makes no difference
+                if (index < this.firstChildIndex) {
                     this.firstChildIndex = index;
                 }
             }
@@ -273,16 +324,24 @@ public class Octree {
             if (child != null) {
                 child.removeSection(toRemove);
 
-                // and remove the child if it's now empty
-                if (child.ownChildCount == 0) {
+                // if the child is a singleton, remove it and replace it with its only child
+                if (child.ownChildCount == 1) {
+                    Octree onlySubchild = child.children[child.firstChildIndex];
+                    this.children[index] = onlySubchild;
+                    onlySubchild.setParent(this);
+
+                    // don't need to update skippable state here, the state of child and subchild is
+                    // the same
+                }
+
+                // remove the child if it is now empty
+                else if (child.ownChildCount == 0) {
+                    // when this reaches zero the caller can remove this node
                     this.children[index] = null;
-                    child.setParent(null, -1); // for safety, do we need this?
                     this.ownChildCount--;
 
-                    if (this.ownChildCount == 0) {
-                        this.firstChildIndex = 0;
-                    } else if (index == this.firstChildIndex) {
-                        // find the new first child
+                    // find the new first child if it was pointing to the removed child
+                    if (this.ownChildCount > 0 && index == this.firstChildIndex) {
                         firstChildIndex++;
 
                         // increment until we find a non-null child, if there is no child the
@@ -338,19 +397,10 @@ public class Octree {
         // the two are separate because the real lastVisible frame is only updated if
         // the node itself or a parent (parent unimplemented for now) was visited
         this.lastVisibleFrame = frame;
-        this.setLastVisibleFrameFromChild(frame);
-    }
-
-    private void setLastVisibleFrameFromChild(int frame) {
-        // if not the same, set and also tell the parent.
-        // will usually make less then even log n steps since most children will be near
-        // eachother when they are marked, and they are all marked with the same frame
-        // number
-        if (this.childLastVisibleFrame != frame) {
-            this.childLastVisibleFrame = frame;
-            if (this.parent != null) {
-                this.parent.setLastVisibleFrameFromChild(frame);
-            }
+        Octree node = this;
+        while (node != null && node.childLastVisibleFrame != frame) {
+            node.childLastVisibleFrame = frame;
+            node = node.parent;
         }
     }
 
@@ -360,13 +410,21 @@ public class Octree {
      * children (too much effort).
      */
     public boolean getSelfVisibleInFrame(int frame) {
+        return this.stepSelfVisibleInFrame(frame) == frame;
+    }
+
+    private int stepSelfVisibleInFrame(int frame) {
         if (this.lastVisibleFrame == frame) {
-            return true;
+            return frame;
         }
         if (this.parent != null) {
-            return this.parent.getSelfVisibleInFrame(frame);
+            int result = this.parent.stepSelfVisibleInFrame(frame);
+            if (result == frame) {
+                this.lastVisibleFrame = frame;
+            }
+            return result;
         }
-        return false;
+        return this.lastVisibleFrame;
     }
 
     public boolean intersectsBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
@@ -488,8 +546,6 @@ public class Octree {
             return null;
         }
 
-        // TODO: what happens in the case of the second-level octree? (parent's selector
-        // is 1 << 31)
         int offset = axisSign > 0 ? this.size : -this.size;
 
         // compute the origin of the mirrored volume. Looking for an octree node of the
@@ -629,12 +685,32 @@ public class Octree {
         // which the bit at the axis index is equal to the axis sign
         // convert the axis sign into either 0 (if negative) or 1 (if positive)
         int indices = FACE_INDICES[(axisIndex << 1) + (axisSign > 0 ? 1 : 0)];
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 4; i++, indices >>= 8) {
             Octree child = this.children[indices & 0b111];
             if (child != null) {
+                // if the child is not an immediate child, check that it actually touches the
+                // face
+                if (child.ignoredBits + 1 < this.ignoredBits) {
+                    switch (axisIndex) {
+                        case 0:
+                            if (axisSign > 0 ? child.x + child.size != this.x + this.size : child.x != this.x) {
+                                continue;
+                            }
+                            break;
+                        case 1:
+                            if (axisSign > 0 ? child.y + child.size != this.y + this.size : child.y != this.y) {
+                                continue;
+                            }
+                            break;
+                        case 2:
+                            if (axisSign > 0 ? child.z + child.size != this.z + this.size : child.z != this.z) {
+                                continue;
+                            }
+                            break;
+                    }
+                }
                 child.iterateFaceNodes(accumulator, axisIndex, axisSign, acceptSkippable);
             }
-            indices >>= 8;
         }
     }
 

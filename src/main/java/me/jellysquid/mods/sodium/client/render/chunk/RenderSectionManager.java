@@ -18,7 +18,6 @@ import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.data.ChunkRenderData;
 import me.jellysquid.mods.sodium.client.render.chunk.graph.ChunkGraphInfo;
-import me.jellysquid.mods.sodium.client.render.chunk.graph.ChunkGraphIterationQueue;
 import me.jellysquid.mods.sodium.client.render.chunk.region.RenderRegionManager;
 import me.jellysquid.mods.sodium.client.render.chunk.tasks.ChunkRenderBuildTask;
 import me.jellysquid.mods.sodium.client.render.chunk.tasks.ChunkRenderEmptyBuildTask;
@@ -429,7 +428,7 @@ public class RenderSectionManager {
     }
 
     public boolean isGraphDirty() {
-        // return this.needsUpdate;
+        // return this.needsUpdate; TODO: Re-enable this
         return true;
     }
 
@@ -482,16 +481,6 @@ public class RenderSectionManager {
         if (node != null) {
             node.setOcclusionData(data.getOcclusionData());
         }
-    }
-
-    private boolean isWithinRenderDistance(Octree node) {
-        int xMin = Math.abs(node.x - this.centerChunkX);
-        int xMax = Math.abs(node.maxX - this.centerChunkX);
-        int zMin = Math.abs(node.z - this.centerChunkZ);
-        int zMax = Math.abs(node.maxZ - this.centerChunkZ);
-
-        return (xMin <= this.renderDistance || xMax <= this.renderDistance)
-            && (zMin <= this.renderDistance || zMax <= this.renderDistance);
     }
 
     /**
@@ -780,6 +769,7 @@ public class RenderSectionManager {
     private void iterateChunks(ChunkRenderListBuilder list, Camera camera, Frustum frustum, int frame, boolean spectator) {
         this.initSearch(list, camera, frustum, frame, spectator);
 
+        // TODO: use a better queue, array of array lists
         ObjectHeapPriorityQueue<QueueEntry> queue = this.iterationQueue;
 
         // idea: find the largest skippable face adjacent octree and add it to the queue for each direction we want to explore. if it doesn't exist (the adjacent section isn't empty), add the adjacent section (its octree leaf) instead
@@ -809,7 +799,7 @@ public class RenderSectionManager {
 
                 // iterate the adjacent nodes, skipping over the contents of skippable nodes
                 node.iterateFaceAdjacentNodes((faceAdjacent) -> {
-                    if (this.isWithinRenderDistance(faceAdjacent)) {
+                    if (faceAdjacent.isWithinDistance(this.renderDistance, this.centerChunkX, this.centerChunkZ)) {
                         this.bfsEnqueue(list, node, faceAdjacent, DirectionUtil.getOpposite(dir), distance);
                     }
                 }, dir, true);
@@ -830,7 +820,7 @@ public class RenderSectionManager {
             return;
         }
 
-        if (isFrustumCulled(node.x << 4, node.y << 4, node.z << 4, node.size << 4)) {
+        if (isFrustumCulled(node.origX << 4, node.origY << 4, node.origZ << 4, node.size << 4)) {
             return;
         }
 
