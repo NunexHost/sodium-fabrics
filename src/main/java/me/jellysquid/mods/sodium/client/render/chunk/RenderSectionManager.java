@@ -2,6 +2,7 @@ package me.jellysquid.mods.sodium.client.render.chunk;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.PriorityQueue;
+import it.unimi.dsi.fastutil.ints.*;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.*;
@@ -69,10 +70,10 @@ public class RenderSectionManager {
 
     private final Long2ReferenceMap<RenderSection> sections = new Long2ReferenceOpenHashMap<>();
     public final Octree root = Octree.newRoot();
+    private final Int2ReferenceMap<ObjectArrayList<QueueEntry>> iterationQueues = new Int2ReferenceOpenHashMap<>(200);
+    private int nonEmptyQueues = 0;
 
     private final Map<ChunkUpdateType, PriorityQueue<RenderSection>> rebuildQueues = new EnumMap<>(ChunkUpdateType.class);
-
-    private final ObjectHeapPriorityQueue<QueueEntry> iterationQueue = new ObjectHeapPriorityQueue<>(Comparator.comparing(QueueEntry::getDistance));
 
     private final ObjectList<RenderSection> tickableChunks = new ObjectArrayList<>();
     private final ObjectList<BlockEntity> visibleBlockEntities = new ObjectArrayList<>();
@@ -260,6 +261,9 @@ public class RenderSectionManager {
 
     private boolean unloadSection(int x, int y, int z) {
         RenderSection chunk = this.sections.remove(ChunkSectionPos.asLong(x, y, z));
+        if (this.nonEmptyQueues > 0) {
+            throw new IllegalStateException("why are sections being unloaded while the bfs is running?");
+        }
         root.removeSection(chunk);
 
         RenderRegion region = this.regions.getRegion(RenderRegion.getRegionKeyForChunk(x, y, z));
@@ -622,7 +626,7 @@ public class RenderSectionManager {
 
         initBoxTestState();
 
-        this.iterationQueue.clear();
+        // queues are cleared in iteration
 
         BlockPos origin = camera.getBlockPos();
 
@@ -665,7 +669,7 @@ public class RenderSectionManager {
                     info.resetCullingState();
                     render.octreeLeaf.setLastVisibleFrame(frame);
 
-                    this.addVisible(list, render.octreeLeaf, null, render.getSquaredDistance(origin));
+                    this.addVisible(list, render.octreeLeaf, null, render.getManhattanDistance(chunkX, chunkY, chunkZ));
                 }
             }
         }
@@ -745,16 +749,10 @@ public class RenderSectionManager {
     public class QueueEntry {
         public final Octree node;
         public final Direction flow;
-        public final double distance;
  
-        public QueueEntry(Octree node, Direction flow, double distance) {
+        public QueueEntry(Octree node, Direction flow) {
             this.node = node;
             this.flow = flow;
-            this.distance = distance;
-        }
-
-        public double getDistance() {
-            return distance;
         }
     }
 
@@ -769,41 +767,50 @@ public class RenderSectionManager {
     private void iterateChunks(ChunkRenderListBuilder list, Camera camera, Frustum frustum, int frame, boolean spectator) {
         this.initSearch(list, camera, frustum, frame, spectator);
 
-        // TODO: use a better queue, array of array lists
-        ObjectHeapPriorityQueue<QueueEntry> queue = this.iterationQueue;
 
         // idea: find the largest skippable face adjacent octree and add it to the queue for each direction we want to explore. if it doesn't exist (the adjacent section isn't empty), add the adjacent section (its octree leaf) instead
 
-        while (!queue.isEmpty()) {
-            QueueEntry entry = queue.dequeue();
-            Octree node = entry.node;
-            Direction flow = entry.flow;
-            double distance = entry.distance;
-
-            // TODO: temporary?
-            // node.iterateUnskippableTree((subNode) -> {
-            //     schedulePendingUpdates(subNode.section);
-            // });
-            if (node.isLeaf()) {
-                schedulePendingUpdates(node.section);
+        for (int distance = 0; this.nonEmptyQueues > 0; distance++) {
+            ObjectArrayList<QueueEntry> queue = this.iterationQueues.get(distance);
+            if (queue == null) {
+                continue;
             }
+            for (int i = 0; i < queue.size(); i++) {
+                QueueEntry entry = queue.get(i);
+                Octree node = entry.node;
+                Direction flow = entry.flow;
+                int localDistance = distance;
 
-            for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
-                // TODO: deal with this only working sometimes
-                if (node.isLeaf()) {
-                    RenderSection section = node.section;
-                    if (this.isCulled(section.getGraphInfo(), flow, dir)) {
-                        continue;
+                // TODO: temporary?
+                node.iterateUnskippableTree((subNode) -> {
+                    schedulePendingUpdates(subNode.section);
+                });
+                // if (node.isLeaf()) {
+                //     schedulePendingUpdates(node.section);
+                // }
+
+                for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
+                    // TODO: deal with this only working sometimes
+                    if (node.isLeaf()) {
+                        RenderSection section = node.section;
+                        if (section == null) {
+                            throw new IllegalStateException("null section");
+                        }
+                        if (this.isCulled(section.getGraphInfo(), flow, dir)) {
+                            continue;
+                        }
                     }
+
+                    // iterate the adjacent nodes, skipping over the contents of skippable nodes
+                    node.iterateFaceAdjacentNodes((faceAdjacent) -> {
+                        if (faceAdjacent.isWithinDistance(this.renderDistance, this.centerChunkX, this.centerChunkZ)) {
+                            this.bfsEnqueue(list, node, faceAdjacent, DirectionUtil.getOpposite(dir), localDistance);
+                        }
+                    }, dir, true);
                 }
-
-                // iterate the adjacent nodes, skipping over the contents of skippable nodes
-                node.iterateFaceAdjacentNodes((faceAdjacent) -> {
-                    if (faceAdjacent.isWithinDistance(this.renderDistance, this.centerChunkX, this.centerChunkZ)) {
-                        this.bfsEnqueue(list, node, faceAdjacent, DirectionUtil.getOpposite(dir), distance);
-                    }
-                }, dir, true);
             }
+            queue.clear();
+            nonEmptyQueues--;
         }
     }
 
@@ -815,7 +822,7 @@ public class RenderSectionManager {
      * visible. The culling state is updated with the culling state of the parent
      * section that led to this section being added to the queue.
      */
-    private void bfsEnqueue(ChunkRenderListBuilder list, Octree parent, Octree node, Direction flow, double distance) {
+    private void bfsEnqueue(ChunkRenderListBuilder list, Octree parent, Octree node, Direction flow, int distance) {
         if (node.getSelfVisibleInFrame(currentFrame)) {
             return;
         }
@@ -835,8 +842,16 @@ public class RenderSectionManager {
         this.addVisible(list, node, flow, distance + Octree.manhattanDistance(parent, node));
     }
 
-    private void addVisible(ChunkRenderListBuilder list, Octree node, Direction flow, double distance) {
-        this.iterationQueue.enqueue(new QueueEntry(node, flow, distance));
+    private void addVisible(ChunkRenderListBuilder list, Octree node, Direction flow, int distance) {
+        ObjectArrayList<QueueEntry> queue = this.iterationQueues.get(distance);
+        if (queue == null) {
+            queue = new ObjectArrayList<>();
+            this.iterationQueues.put(distance, queue);
+        }
+        if (queue.isEmpty()) {
+            this.nonEmptyQueues++;
+        }
+        queue.add(new QueueEntry(node, flow));
 
         // full content iteration of the octree node isn't necessary if all
         // octree nodes are either leaf nodes or are fully skippable

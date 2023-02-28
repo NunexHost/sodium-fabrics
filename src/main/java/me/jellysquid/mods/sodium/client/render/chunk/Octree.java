@@ -42,7 +42,8 @@ import net.minecraft.util.math.Direction;
  * redundant. (figuring out which ones these are may be difficult, but it's
  * probably possible)
  * 
- * // TODO: it seems the bfs is still iterating too many sections. Is the face adjacent calculation somehow broken or is the bfs broken?
+ * // TODO: it seems the bfs is still iterating too many sections. Is the face
+ * adjacent calculation somehow broken or is the bfs broken?
  * 
  * @author douira
  */
@@ -162,21 +163,17 @@ public class Octree {
     }
 
     public static int manhattanDistance(Octree a, Octree b) {
-        return Math.abs(a.x + (a.size >> 1) - b.x - (b.size >> 1))
-                + Math.abs(a.y + (a.size >> 1) - b.y - (b.size >> 1))
-                + Math.abs(a.z + (a.size >> 1) - b.z - (b.size >> 1));
+        return Math.abs((a.x + a.selector) - (b.x + b.selector))
+                + Math.abs((a.y + a.selector) - (b.y + b.selector))
+                + Math.abs((a.z + a.selector) - (b.z + b.selector));
     }
 
     public boolean isWithinDistance(int distance, int centerX, int centerZ) {
         centerX = processCoordinate(centerX);
         centerZ = processCoordinate(centerZ);
-        int xMin = Math.abs(this.x - centerX);
-        int xMax = Math.abs(this.maxX - centerX);
-        int zMin = Math.abs(this.z - centerZ);
-        int zMax = Math.abs(this.maxZ - centerZ);
 
-        return (xMin <= distance || xMax <= distance)
-                && (zMin <= distance || zMax <= distance);
+        return (Math.abs(this.x - centerX) <= distance || Math.abs(this.maxX - centerX) <= distance)
+                && (Math.abs(this.z - centerZ) <= distance || Math.abs(this.maxZ - centerZ) <= distance);
     }
 
     private int getIndexFor(int x, int y, int z) {

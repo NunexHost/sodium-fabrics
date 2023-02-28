@@ -179,6 +179,12 @@ public class RenderSection {
         return (xDist * xDist) + (yDist * yDist) + (zDist * zDist);
     }
 
+    public int getManhattanDistance(int x, int y, int z) {
+        return Math.abs(x - this.chunkX)
+            + Math.abs(y - this.chunkY)
+            + Math.abs(z - this.chunkZ);
+    }
+
     /**
      * @return The x-coordinate of the center position of this chunk render
      */
