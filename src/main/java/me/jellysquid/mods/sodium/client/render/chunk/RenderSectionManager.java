@@ -76,7 +76,7 @@ public class RenderSectionManager {
 
     private final ChunkGraphIterationQueue iterationQueue = new ChunkGraphIterationQueue();
 
-    private final ObjectList<RenderSection> tickableChunks = new ObjectArrayList<>();
+    public final ObjectList<RenderSection> tickableChunks = new ObjectArrayList<>();
     private final ObjectList<BlockEntity> visibleBlockEntities = new ObjectArrayList<>();
 
     private final RegionChunkRenderer chunkRenderer;
@@ -141,6 +141,7 @@ public class RenderSectionManager {
         var list = new ChunkRenderListBuilder();
 
         this.setup(camera);
+
         this.iterateChunks(list, camera, frustum, frame, spectator);
 
         this.chunkRenderList = list.build();
@@ -148,6 +149,11 @@ public class RenderSectionManager {
     }
 
     public void update2(Camera camera, Frustum frustum, int frame, boolean spectator) {
+        this.currentFrame = frame;
+        this.frustum = frustum;
+        this.useOcclusionCulling = MinecraftClient.getInstance().chunkCullingEnabled;
+
+
         this.resetLists();
         this.setup(camera);
         var list = new ChunkRenderListBuilder();
@@ -157,6 +163,8 @@ public class RenderSectionManager {
         int chunkX = origin.getX() >> 4;
         int chunkY = origin.getY() >> 4;
         int chunkZ = origin.getZ() >> 4;
+        this.centerChunkX = chunkX;
+        this.centerChunkZ = chunkZ;
 
         graphSystem.render(frustum, chunkX, chunkY, chunkZ, list);
 
@@ -227,7 +235,7 @@ public class RenderSectionManager {
     }
 
     public void addChunkToVisible(ChunkRenderListBuilder list, RenderSection render) {
-        //list.add(render);
+        list.add(render);
 
         if (render.isTickable()) {
             this.tickableChunks.add(render);
@@ -272,7 +280,6 @@ public class RenderSectionManager {
 
     private boolean loadSection(int x, int y, int z) {
         RenderSection render = new RenderSection(this.worldRenderer, x, y, z);
-        graphSystem.set(render, render.getData());
         this.sections.put(ChunkSectionPos.asLong(x, y, z), render);
 
         Chunk chunk = this.world.getChunk(x, z);
@@ -285,6 +292,7 @@ public class RenderSectionManager {
         }
 
         this.connectNeighborNodes(render);
+        graphSystem.set(render, render.getData());
 
         return true;
     }

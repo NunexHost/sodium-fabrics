@@ -17,7 +17,7 @@ public class GraphInterface {
     public GraphInterface(RenderSectionManager rsm, int rd, int minHeight, int maxHeight) {
         this.minHeight = minHeight;
         this.rsm = rsm;
-        explorer = new GraphExplorer(rd, maxHeight - minHeight);
+        explorer = new GraphExplorer(rd, maxHeight - minHeight, minHeight);
     }
 
     final Long2ObjectOpenHashMap<RenderSection> sections = new Long2ObjectOpenHashMap<>();
@@ -27,7 +27,9 @@ public class GraphInterface {
 
         if ((flags & RenderSectionFlags.HAS_BLOCK_GEOMETRY) != 0) {
             list.add(node);
-            rsm.addChunkToVisible(list, node);
+            if (node.isTickable()) {
+                rsm.tickableChunks.add(node);
+            }
         }
 
         if ((flags & RenderSectionFlags.HAS_BLOCK_ENTITIES) != 0) {
@@ -47,12 +49,11 @@ public class GraphInterface {
     private int i = 0;
     public void render(Frustum frustum, int x, int y, int z, ChunkRenderListBuilder list) {
         this.list = list;
-        explorer.frustum = frustum;
         long t1 = System.nanoTime();
-        explorer.explore(x,y-minHeight,z, this::onNodeExplored);
+        explorer.explore(frustum, x,y-minHeight,z, this::onNodeExplored);
         t += System.nanoTime() - t1;
         if (i++ == 100) {
-            System.out.println(t/i);
+            //System.out.println(t/i);
             t = 0;
             i = 0;
         }
@@ -63,19 +64,31 @@ public class GraphInterface {
         //System.out.println(System.currentTimeMillis()-t);
     }
 
+    //FIXME: THIS IS VROKEN, specifically setting the air
     public void set(RenderSection section, ChunkRenderData data) {
         int x = section.getChunkX();
         int y = section.getChunkY() - minHeight;
         int z = section.getChunkZ();
+
+        if (false){
+            for (var s : sections.values()) {
+                boolean sbs = s.getData() == ChunkRenderData.EMPTY;
+                int lx = s.getChunkX();
+                int ly = s.getChunkY()-minHeight;
+                int lz = s.getChunkZ();
+                if (sbs ^ explorer.queryTreeNodeSet(lx,ly,lz)) {
+                    throw new IllegalStateException();
+                }
+            }
+        }
         sections.put(ChunkSectionPos.asLong(x,y,z), section);
+
         if (data == ChunkRenderData.ABSENT)  {
             for (int i = 0; i < 6; i++) {
                 explorer.setVisibilityData(x,y,z,i, (byte) 0);
             }
             explorer.unsetAir(x,y,z);
-            return;
-        }
-        if (data == ChunkRenderData.EMPTY) {
+        } else if (data == ChunkRenderData.EMPTY) {
             for (int i = 0; i < 6; i++) {
                 explorer.setVisibilityData(x,y,z,i, (byte) 0);
             }
@@ -93,12 +106,28 @@ public class GraphInterface {
                 combined &= msk;
             }
 
-            if (combined == (1<<6)-1) {
-                explorer.setAir(x,y,z);
-            } else {
-                explorer.unsetAir(x, y, z);
-            }
+            //if (combined == (1<<6)-1) {
+            //    explorer.setAir(x,y,z);
+            //} else {
+            //    explorer.unsetAir(x, y, z);
+            //}
             //explorer.unsetAir(x,y,z);
+        }
+
+
+        if (false){
+            for (var s : sections.values()) {
+                boolean sbs = s.getData() == ChunkRenderData.EMPTY;
+                if (s == section) {
+                    sbs = data == ChunkRenderData.EMPTY;
+                }
+                int lx = s.getChunkX();
+                int ly = s.getChunkY()-minHeight;
+                int lz = s.getChunkZ();
+                if (sbs ^ explorer.queryTreeNodeSet(lx,ly,lz)) {
+                    throw new IllegalStateException();
+                }
+            }
         }
     }
 
@@ -106,7 +135,7 @@ public class GraphInterface {
         int x = section.getChunkX();
         int y = section.getChunkY() - minHeight;
         int z = section.getChunkZ();
-        explorer.setAir(x, y, z);
+        explorer.unsetAir(x, y, z);
         for (int i = 0; i < 6; i++) {
             explorer.setVisibilityData(x,y,z,i, (byte) 0);
         }

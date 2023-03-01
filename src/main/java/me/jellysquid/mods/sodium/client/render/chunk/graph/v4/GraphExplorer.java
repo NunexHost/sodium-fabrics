@@ -12,6 +12,7 @@ public final class GraphExplorer {
     final short[] traversalData;
     final int[] lvlTraversalBaseOffset;
     final Octree tree;
+    final FrustumCuller frustumCuller;
     final int widthBits;
     final int heightBits;
     final int widthMSK;
@@ -21,9 +22,10 @@ public final class GraphExplorer {
 
     final int rd;
     final int maxHeight;
-    public GraphExplorer(int renderDistance, int height) {
+    public GraphExplorer(int renderDistance, int height, int heightOffset) {
         int width = renderDistance*2+1;
         tree = new Octree(width, height);
+        frustumCuller = new FrustumCuller(renderDistance, height, heightOffset);
         this.rd = renderDistance;
         this.maxHeight = height;
         widthBits = Integer.numberOfTrailingZeros(MathHelper.smallestEncompassingPowerOfTwo(width));
@@ -59,12 +61,12 @@ public final class GraphExplorer {
     }
 
     public void setVisibilityData(int x, int y, int z, int dir, byte data) {
-        int idx = (x& widthMSK) | (z& widthMSK)<< widthBits | (y& heightMSK)<< (widthBits <<1);
+        int idx = (x& widthMSK) | ((z& widthMSK)<< widthBits) | ((y& heightMSK)<< (widthBits <<1));
         visibilityData[idx*6+dir] = data;
     }
 
     private short getVisibilityData(int x, int y, int z, int dir) {
-        int idx = (x& widthMSK) | (z& widthMSK)<< widthBits | (y& heightMSK)<< (widthBits <<1);
+        int idx = (x& widthMSK) | ((z& widthMSK)<< widthBits )| ((y& heightMSK)<< (widthBits <<1));
         return visibilityData[idx*6+dir];
     }
 
@@ -78,45 +80,70 @@ public final class GraphExplorer {
         return dx*dx+dz*dz<=rd*rd;
     }
 
-    public Frustum frustum;
     //TODO: make a frustum octree and pretest that, then just sample it, should be like 300% faster
     private boolean isInFrustum(int lvl, int x, int y, int z) {
         //y -= 4;//FIXME
-        if (frustum == null) return true;
-        int sx = x<<(lvl+4);
-        int sy = y<<(lvl+4);
-        int sz = z<<(lvl+4);
-        int ex = (x+1)<<(lvl+4);
-        int ey = (y+1)<<(lvl+4);
-        int ez = (z+1)<<(lvl+4);
-        sy -= 4<<4;
-        ey -= 4<<4;
-        return frustum.isBoxVisible(sx,sy,sz,ex,ey,ez);//TODO: FIXME
+        //if (frustum == null) return true;
+        //int sx = x<<(lvl+4);
+        //int sy = y<<(lvl+4);
+        //int sz = z<<(lvl+4);
+        //int ex = (x+1)<<(lvl+4);
+        //int ey = (y+1)<<(lvl+4);
+        //int ez = (z+1)<<(lvl+4);
+        //sy -= 4<<4;
+        //ey -= 4<<4;
+        //return frustum.isBoxVisible(sx,sy,sz,ex,ey,ez);//TODO: FIXME
+        return frustumCuller.isInFrustum(lvl, x, y, z);
     }
 
     private int queryTreeHighestFilledLevel(int lvl, int x, int y, int z) {
         return tree.findHighestFilledLevel(lvl, x&(widthMSK>>lvl), y&(heightMSK>>lvl), z&(widthMSK>>lvl));
     }
 
+    public boolean queryTreeNodeSet(int x, int y, int z) {
+        return queryTreeNodeSet(0, x,y,z);
+    }
     private boolean queryTreeNodeSet(int lvl, int x, int y, int z) {
         return tree.isNodeSet(lvl, x&(widthMSK>>lvl), y&(heightMSK>>lvl), z&(widthMSK>>lvl));
     }
 
 
+    private int distAxis(int lvl, int source, int b) {
+        if (source>>lvl == b) return 0;//Within same range
+        int diff = (b<<lvl) - source;
+        diff += diff<0?(1<<lvl)-1:0;
+        return Math.abs(diff);
+    }
     void enqueue(int lvl, int x, int y, int z, int cdist) {
         //if (queryTreeHighestFilledLevel(lvl, x, y, z) != lvl) {
         //    throw new IllegalStateException();
         //}
 
+
+
+        //NOTE: This doesnt work when cx at lvl == x for any axis
+        /*
         int msk = (1<<lvl)-1;
         int dx = Math.min(Math.abs(cx-(x<<lvl)),Math.abs(cx-((x<<lvl)+msk)));
         int dy = Math.min(Math.abs(cy-(y<<lvl)),Math.abs(cy-((y<<lvl)+msk)));
         int dz = Math.min(Math.abs(cz-(z<<lvl)),Math.abs(cz-((z<<lvl)+msk)));
+        */
+        //int msk = (1<<lvl)-1;
+        /*
+        int dx = Math.max((Math.abs((cx>>lvl)-x)<<lvl)-((1<<lvl)-1), 0);
+        int dy = Math.max((Math.abs((cy>>lvl)-y)<<lvl)-((1<<lvl)-1), 0);
+        int dz = Math.max((Math.abs((cz>>lvl)-z)<<lvl)-((1<<lvl)-1), 0);*/
+        int dx = distAxis(lvl, cx, x);
+        int dy = distAxis(lvl, cy, y);
+        int dz = distAxis(lvl, cz, z);
 
         int distance = dx+dy+dz;
 
+        if ((distance>>lvl) < (cdist>>lvl)) {
+            return;
+        }
         //TODO: check that distance >= currentDistance
-        var queue = queues[Math.max(distance, cdist)];//TODO: idk if it should be cdist or cdist+1
+        var queue = queues[Math.max(distance, cdist+1)];//TODO: idk if it should be cdist or cdist+1
         queue.add(x);
         queue.add(z);
         queue.add(y|(lvl<<24));
@@ -133,9 +160,19 @@ public final class GraphExplorer {
         }
 
         //int inboundDir = DirectionUtil.getOppositeId(outgoingDir);
-        selfTraversalData |= queryTreeNodeSet(lvl, x, y, z)?0xFF:getVisibilityData(x, y, z, inbound);//this.getVisibilityData(neighborSectionIdx, inboundDir);
+        selfTraversalData |= lvl!=0?0xFF:(queryTreeNodeSet(0, x, y, z)?0xFF:getVisibilityData(x, y, z, inbound));//TODO:it might be faster to just call getVisibilityData//this.getVisibilityData(neighborSectionIdx, inboundDir);
+        selfTraversalData |= lvl == 0?0:srcDirMsk;
         selfTraversalData &= ~(1 << (8 + inbound)); // Un mark incoming direction
-        selfTraversalData &= srcDirMsk|0xFF;
+        selfTraversalData &= srcDirMsk | 0xFF;
+        //if ((Short.toUnsignedInt(selfTraversalData)>>>8)!=((Short.toUnsignedInt(selfTraversalData)>>>8)&(srcDirMsk>>8))) {
+        //byte t = (byte) ((((byte)((selfTraversalData&srcDirMsk)>>>8))^((byte)(srcDirMsk>>>8)))&(~(1 << (inbound))));
+        //if (t != 0 //THIS IS THE ROOT ISSUE OF WHY SOMETIMES IT BREAKS
+        //        && lvl != 0) {
+        //    int i = 0;
+        //    i++;
+        //    //enqueue(lvl, x, y, z, cdist);
+        //    selfTraversalData |= (short) (1 << 15) | srcDirMsk;
+        //}
         traversalData[idx] = selfTraversalData;
     }
 
@@ -182,7 +219,7 @@ public final class GraphExplorer {
         short data = traversalData[idx];
         //Explore like the normal bfs
         data &= ((data >> 8) & 0xFF) | 0xFF00;//Upper bits represent traversable directions (directions not already traversed), lower bits represent visibilityBits (directions visible due to visibility)
-        //traversalData[idx + level0Offset] = data;
+        if ((data&0b111111)==0) return;
         for (int dir = 0; dir < 6; dir++) {
             if ((data & (1 << dir)) == 0) {
                 continue;
@@ -203,7 +240,7 @@ public final class GraphExplorer {
 
             //if (!withinRDRange(lvl, idx)) return;
             //if (computeManhattan(lvl, idx)<currentDistance) return;//TODO: CHECK if should do this here
-            if (!(isInRenderBounds(lvl, nx, ny, nz)&&isInFrustum(lvl, nx, ny, nz))) {
+            if (!(isInRenderBounds(lvl, nx, ny, nz)&&isInFrustum(lvl, nx, ny, nz))) {//TODO: RESHUFFLE WHERE THIS IS BEING TESTED
                 continue;
             }
 
@@ -220,13 +257,15 @@ public final class GraphExplorer {
                 expandAlongFaceRecursively(lvl, nx, ny, nz, DirectionUtil.getOpposite(dir), (short) (data&0xFF00), cdist);
             }
         }
+        //traversalData[idx] = 0;//TODO: FIXME
     }
 
     public interface IResultConsumer {void accept(int x, int y, int z);}
     public void explore(int x, int y, int z) {
-        explore(x, y, z, (a,b,c)->{});
+        explore(null,x, y, z, (a,b,c)->{});
     }
-    public void explore(int x, int y, int z, IResultConsumer consumer) {
+    public void explore(Frustum frustum, int x, int y, int z, IResultConsumer consumer) {
+        frustumCuller.cull(frustum, x, y, z);
         Arrays.fill(traversalData, (short) 0);
         cx = x;
         cy = y;
@@ -236,7 +275,7 @@ public final class GraphExplorer {
             int bx = x >> lvl;
             int by = y >> lvl;
             int bz = z >> lvl;
-            enqueue(lvl, bx, by, bz, 0);
+            enqueue(lvl, bx, by, bz, -1);
             traversalData[getTraversalDataIndex(lvl, bx, by, bz)] = -1;
         }
 
@@ -286,12 +325,14 @@ public final class GraphExplorer {
         tree.set(x&widthMSK, y&heightMSK, z&widthMSK);//TODO: check this is correct with the masks
     }
 
+    //TODO: need to add "effectivly air" which is a visible node but with occlusion data of any culling direction
+
     public void unsetAir(int x, int y, int z) {
         tree.unset(x&widthMSK, y&heightMSK, z&widthMSK);//TODO: check this is correct with the masks
     }
 
     public static void main(String[] args) {
-        GraphExplorer ge = new GraphExplorer(32, 24);
+        GraphExplorer ge = new GraphExplorer(32, 24,0);
         for (int x = 0; x < 128; x++) {
             for (int z = 0; z < 128; z++) {
                 ge.unsetAir(x,0,z);

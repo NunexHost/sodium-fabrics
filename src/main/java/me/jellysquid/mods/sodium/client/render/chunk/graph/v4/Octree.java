@@ -6,10 +6,15 @@ public final class Octree {
     final byte[] tree;
     private final int layers;
     private final int widthMsk;
+    private final int[] levelOffsets;
     public Octree(int width, int height) {
         layers = (int) Math.ceil(Math.max(Math.log(width)/Math.log(2), Math.log(height)/Math.log(2)));
         tree = new byte[(((1<<(layers)*3)-1)/7)];//(8^(levels)-1)/7
         widthMsk = (1<<layers)-1;
+        levelOffsets = new int[layers];
+        for (int i = 0; i < layers; i++) {
+            levelOffsets[i] = getOffsetForLevelUndivided(i)/7;
+        }
         //Arrays.fill(tree, (byte) -1);
     }
 
@@ -17,7 +22,7 @@ public final class Octree {
     //Level 0 is the start of the leaf nodes, layers - 1 is the root node
     // Level -1 is the "offset" to leaf nodes
     protected int getOffsetForLevel(int level) {//It might be faster to make this a const final array
-        return getOffsetForLevelUndivided(level)/7;
+        return levelOffsets[level];//getOffsetForLevelUndivided(i)/7;
     }
 
     private int getOffsetForLevelUndivided(int level) {
@@ -51,7 +56,7 @@ public final class Octree {
             int parentIdx = getIndex(i+1,x>>(i+1),y>>(i+1),z>>(i+1))+getOffsetForLevel(i);
             byte parent = tree[parentIdx];
             boolean shouldContinue = parent == (byte) 0xFF;
-            parent &= ~(1<<1<<getOctoIndex(x>>(i+1), y>>(i+1), z>>(i+1)));
+            parent &= ~(1<<getOctoIndex(x>>i, y>>i, z>>i));
             tree[parentIdx] = parent;
             if (!shouldContinue) {
                 break;

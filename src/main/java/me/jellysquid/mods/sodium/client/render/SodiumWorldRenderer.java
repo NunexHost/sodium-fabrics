@@ -143,6 +143,8 @@ public class SodiumWorldRenderer {
         return this.renderSectionManager.getBuilder().isBuildQueueEmpty();
     }
 
+    private long t = 0;
+    private int i = 0;
     /**
      * Called prior to any chunk rendering in order to update necessary state.
      */
@@ -191,8 +193,16 @@ public class SodiumWorldRenderer {
         if (this.renderSectionManager.isGraphDirty()||true) {
             profiler.swap("chunk_graph_rebuild");
 
+            long t1 = System.nanoTime();
             //this.renderSectionManager.update(camera, frustum, frame, spectator);
             this.renderSectionManager.update2(camera, frustum, frame, spectator);
+            t += System.nanoTime() - t1;
+            if (i++ == 100) {
+                System.out.println(t/i);
+                t = 0;
+                i = 0;
+            }
+
         }
 
         profiler.swap("visible_chunk_tick");
