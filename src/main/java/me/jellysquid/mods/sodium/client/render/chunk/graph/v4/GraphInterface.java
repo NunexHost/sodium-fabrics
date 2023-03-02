@@ -11,7 +11,7 @@ import me.jellysquid.mods.sodium.common.util.DirectionUtil;
 import net.minecraft.util.math.ChunkSectionPos;
 
 public class GraphInterface {
-    final GraphExplorer explorer;
+    public final GraphExplorer explorer;
     final int minHeight;
     final RenderSectionManager rsm;
     public GraphInterface(RenderSectionManager rsm, int rd, int minHeight, int maxHeight) {

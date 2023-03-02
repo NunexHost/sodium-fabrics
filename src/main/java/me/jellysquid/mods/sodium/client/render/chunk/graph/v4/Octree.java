@@ -90,8 +90,8 @@ public final class Octree {
         ot.set(1,0,1);
         ot.set(0,1,1);
         ot.set(1,1,1);
-        System.out.println(ot.isNodeSet(1,0,0,0));
-        System.out.println(ot.findHighestFilledLevel(0,1,0,0));
+        // System.out.println(ot.isNodeSet(1,0,0,0));
+        // System.out.println(ot.findHighestFilledLevel(0,1,0,0));
     }
 
 }

@@ -10,7 +10,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import me.jellysquid.mods.sodium.client.SodiumClientMod;
 import me.jellysquid.mods.sodium.client.gl.device.CommandList;
 import me.jellysquid.mods.sodium.client.gl.device.RenderDevice;
-import me.jellysquid.mods.sodium.client.render.chunk.graph.v4.GraphInterface;
 import me.jellysquid.mods.sodium.client.render.chunk.lists.ChunkRenderList;
 import me.jellysquid.mods.sodium.client.render.chunk.lists.ChunkRenderListBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.region.RenderRegion;
@@ -22,6 +21,7 @@ import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.data.ChunkRenderData;
 import me.jellysquid.mods.sodium.client.render.chunk.graph.ChunkGraphInfo;
 import me.jellysquid.mods.sodium.client.render.chunk.graph.ChunkGraphIterationQueue;
+import me.jellysquid.mods.sodium.client.render.chunk.graph.v4.*;
 import me.jellysquid.mods.sodium.client.render.chunk.region.RenderRegionManager;
 import me.jellysquid.mods.sodium.client.render.chunk.tasks.ChunkRenderBuildTask;
 import me.jellysquid.mods.sodium.client.render.chunk.tasks.ChunkRenderEmptyBuildTask;
@@ -322,7 +322,7 @@ public class RenderSectionManager {
         RenderDevice device = RenderDevice.INSTANCE;
         CommandList commandList = device.createCommandList();
 
-        this.chunkRenderer.render(matrices, commandList, this.regions, this.chunkRenderList, pass, new ChunkCameraContext(x, y, z));
+        // this.chunkRenderer.render(matrices, commandList, this.regions, this.chunkRenderList, pass, new ChunkCameraContext(x, y, z));
 
         commandList.flush();
     }
@@ -469,7 +469,8 @@ public class RenderSectionManager {
     }
 
     public boolean isGraphDirty() {
-        return this.needsUpdate;
+        // return this.needsUpdate;
+        return true;
     }
 
     public ChunkBuilder getBuilder() {
@@ -680,9 +681,24 @@ public class RenderSectionManager {
             count++;
         }
 
+        FrustumCuller culler = graphSystem.explorer.frustumCuller;
+
         list.add(String.format("Device buffer objects: %d", count));
         list.add(String.format("Device memory: %d/%d MiB", MathUtil.toMib(deviceUsed), MathUtil.toMib(deviceAllocated)));
         list.add(String.format("Staging buffer: %s", this.regions.getStagingBuffer().toString()));
+
+        int totalFrustumChecks = culler.frustumCheckActualCount + culler.frustumCheckBoxCount;
+        list.add(String.format("%s Visible box count", culler.visibleBoxCount));
+        list.add(String.format("%s chunk frustum checks actual", culler.frustumCheckActualCount));
+        list.add(String.format("%s total frustum checks", totalFrustumChecks));
+        list.add(String.format("%s chunk frustum checks potential", culler.frustumCheckPotentialCount));
+        list.add(String.format("%d%% fewer frustum checks", 100 - 100 * totalFrustumChecks / culler.frustumCheckPotentialCount));
+        list.add(String.format("%s additional box frustum checks", culler.frustumCheckBoxCount));
+        list.add(String.format("%s box tests", culler.boxTestCount));
+        list.add(String.format("%s boxes cleared",culler.clearedBoxes));
+        for (int i = 0; i < culler.visibleBoxCount; i++) {
+            list.add(String.format("%s hits on box %d", culler.visibleBoxHits[i], i));
+        }
         return list;
     }
 }

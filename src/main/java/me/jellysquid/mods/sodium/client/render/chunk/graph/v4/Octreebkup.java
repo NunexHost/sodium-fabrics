@@ -107,6 +107,6 @@ public final class Octreebkup {
         Octreebkup ot = new Octreebkup(5, 3);
         ot.unset(2,0,0);
         //System.out.println(ot.isNodeSet(1,0,0,0));
-        System.out.println(ot.findHighestFilledLevel(0,1,0,0));
+        // System.out.println(ot.findHighestFilledLevel(0,1,0,0));
     }
 }

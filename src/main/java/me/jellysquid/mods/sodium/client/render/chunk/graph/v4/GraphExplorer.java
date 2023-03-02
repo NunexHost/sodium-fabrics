@@ -12,7 +12,7 @@ public final class GraphExplorer {
     final short[] traversalData;
     final int[] lvlTraversalBaseOffset;
     final Octree tree;
-    final FrustumCuller frustumCuller;
+    public final FrustumCuller frustumCuller;
     final int widthBits;
     final int heightBits;
     final int widthMSK;
@@ -83,17 +83,17 @@ public final class GraphExplorer {
     //TODO: make a frustum octree and pretest that, then just sample it, should be like 300% faster
     private boolean isInFrustum(int lvl, int x, int y, int z) {
         //y -= 4;//FIXME
-        //if (frustum == null) return true;
-        //int sx = x<<(lvl+4);
-        //int sy = y<<(lvl+4);
-        //int sz = z<<(lvl+4);
-        //int ex = (x+1)<<(lvl+4);
-        //int ey = (y+1)<<(lvl+4);
-        //int ez = (z+1)<<(lvl+4);
-        //sy -= 4<<4;
-        //ey -= 4<<4;
+        // if (frustum == null) return true;
+        int sx = x<<(lvl+4);
+        int sy = y<<(lvl+4);
+        int sz = z<<(lvl+4);
+        int ex = (x+1)<<(lvl+4);
+        int ey = (y+1)<<(lvl+4);
+        int ez = (z+1)<<(lvl+4);
+        sy -= 4<<4;
+        ey -= 4<<4;
         //return frustum.isBoxVisible(sx,sy,sz,ex,ey,ez);//TODO: FIXME
-        return frustumCuller.isInFrustum(lvl, x, y, z);
+        return frustumCuller.isInFrustum(sx, sy, sz, ex, ey, ez);
     }
 
     private int queryTreeHighestFilledLevel(int lvl, int x, int y, int z) {

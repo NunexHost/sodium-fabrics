@@ -81,6 +81,6 @@ public class OctoTree {
                 }
             }
         }
-        System.out.println(e);
+        // System.out.println(e);
     }
 }
