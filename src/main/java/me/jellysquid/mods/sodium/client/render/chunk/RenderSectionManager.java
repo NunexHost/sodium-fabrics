@@ -662,7 +662,13 @@ public class RenderSectionManager {
 
                     ChunkGraphInfo info = render.getGraphInfo();
 
-                    if (isFrustumCulled(render.getChunkX(), render.getChunkY(), render.getChunkZ(), 16)) {
+                    float minX = render.getOriginX();
+                    float minY = render.getOriginY();
+                    float minZ = render.getOriginZ();
+                    float maxX = minX + 16;
+                    float maxY = minY + 16;
+                    float maxZ = minZ + 16;
+                    if (isFrustumCulled(minX, minY, minZ, maxX, maxY, maxZ)) {
                         continue;
                     }
 
@@ -689,18 +695,15 @@ public class RenderSectionManager {
         return false;
     }
 
-    private void expandBoxWithSection(float x, float y, float z) {
-        float maxX = x + 16f;
-        float maxY = y + 16f;
-        float maxZ = z + 16f;
+    private void expandBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         boolean expanded = false;
         for (int i = 0; i < visibleBoxCount; i++) {
             Vector3f[] corners = visibleBoxes[i];
 
             // combine with this box
-            float newBoxMinX = Math.min(corners[0].x, x);
-            float newBoxMinY = Math.min(corners[0].y, y);
-            float newBoxMinZ = Math.min(corners[0].z, z);
+            float newBoxMinX = Math.min(corners[0].x, minX);
+            float newBoxMinY = Math.min(corners[0].y, minY);
+            float newBoxMinZ = Math.min(corners[0].z, minZ);
             float newBoxMaxX = Math.max(corners[1].x, maxX);
             float newBoxMaxY = Math.max(corners[1].y, maxY);
             float newBoxMaxZ = Math.max(corners[1].z, maxZ);
@@ -719,20 +722,22 @@ public class RenderSectionManager {
 
         // didn't combine with any box, add a new one if possible
         if (!expanded && visibleBoxCount < maxVisibleBoxes) {
-            visibleBoxes[visibleBoxCount][0].set(x, y, z);
+            visibleBoxes[visibleBoxCount][0].set(minX, minY, minZ);
             visibleBoxes[visibleBoxCount][1].set(maxX, maxY, maxZ);
             visibleBoxHits[visibleBoxCount] = 1;
             visibleBoxCount++;
         }
     }
 
-    private boolean isFrustumCulled(float x, float y, float z, float size) {
+    private boolean isFrustumCulled(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         frustumCheckPotentialCount++;
 
         // check if within a visible box to avoid checking the frustum
-        if (!isVisibleInBox(x, y, z)) {
+        // TODO: do any more corners need to be checked?
+        // TODO: Do both corners need to be check if they are just single sections?
+        if (!isVisibleInBox(minX, minY, minZ) && !isVisibleInBox(maxX, maxY, maxZ)) {
             frustumCheckActualCount++;
-            if(!frustum.isBoxVisible(x, y, z, x + size, y + size, z + size)) {
+            if(!frustum.isBoxVisible(minX, minY, minZ, maxX, maxY, maxZ)) {
                 return true;
             }
 
@@ -740,7 +745,7 @@ public class RenderSectionManager {
             // iterate the existing boxes to check if we can add to them
             if (++expandBoxWaitCount > EXPAND_BOX_WAIT) {
                 expandBoxWaitCount = 0;
-                expandBoxWithSection(x, y, z);
+                expandBox(minX, minY, minZ, maxX, maxY, maxZ);
             }
         }
         return false;
@@ -828,7 +833,8 @@ public class RenderSectionManager {
             return;
         }
 
-        if (isFrustumCulled(node.realX << 4, node.realY << 4, node.realZ << 4, node.size << 4)) {
+        if (isFrustumCulled(node.getBlockX(), node.getBlockY(), node.getBlockZ(),
+            node.getBlockMaxX(), node.getBlockMaxY(), node.getBlockMaxZ())) {
             return;
         }
 

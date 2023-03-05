@@ -51,54 +51,31 @@ import net.minecraft.util.math.Direction;
 public abstract class Octree {
     public InnerNode parent; // null for the root node
 
-    public final int size; // size of the node in sections
+    // the offset applied to the internal coordinates to get a compacter tree,
+    // avoiding top-level branches that occur when the real coordinates are around
+    // the origin
     public final int offset;
-    public final int realX, realY, realZ;
-    public final int x, y, z;
-    // last coordinate at which any child may have its origin, inside the node.
-    // for leaf nodes this is identical to x, y, z
-    public final int maxX, maxY, maxZ;
-    public final int centerX, centerY, centerZ;
+
+    // size of the node in sections
+    public final int size;
+
+    // origin of the node in sections, with offset applied
+    public final int internalX, internalY, internalZ;
 
     // the newest frame in which this node was visible as the root of a subtree. If
     // a parent was visible in a later frame, this is outdated.
     int lastVisibleFrame = -1;
 
-    // leaf node construction
-    Octree(int offset, int size, int realX, int realY, int realZ) {
-        this.size = size;
+    Octree(int offset, int size, int internalX, int internalY, int internalZ) {
         this.offset = offset;
-        this.realX = realX;
-        this.realY = realY;
-        this.realZ = realZ;
-        this.x = processCoordinate(realX);
-        this.y = processCoordinate(realY);
-        this.z = processCoordinate(realZ);
-        this.maxX = this.x;
-        this.maxY = this.y;
-        this.maxZ = this.z;
-        this.centerX = this.x;
-        this.centerY = this.y;
-        this.centerZ = this.z;
+        this.size = size;
+        this.internalX = internalX;
+        this.internalY = internalY;
+        this.internalZ = internalZ;
     }
 
-    // inner node construction
-    Octree(int offset, int size, int filter, int x, int y, int z) {
-        this.size = size;
-        this.offset = offset;
-        this.x = x & filter;
-        this.y = y & filter;
-        this.z = z & filter;
-        this.realX = this.x - offset;
-        this.realY = this.y - offset;
-        this.realZ = this.z - offset;
-        this.maxX = this.x + this.size - 1;
-        this.maxY = this.y + this.size - 1;
-        this.maxZ = this.z + this.size - 1;
-        int halfSize = this.size >> 1;
-        this.centerX = this.x + halfSize;
-        this.centerY = this.y + halfSize;
-        this.centerZ = this.z + halfSize;
+    Octree(int offset, int size, int filter, int internalX, int internalY, int internalZ) {
+        this(offset, size, internalX & filter, internalY & filter, internalZ & filter);
     }
 
     public static InnerNode newRoot() {
@@ -110,7 +87,59 @@ public abstract class Octree {
         return new InnerNode(22, 0, 0, 0, 30_000_000 >> 4);
     }
 
-    public abstract boolean contains(int x, int y, int z);
+    public int getSectionX() {
+        return this.internalX - this.offset;
+    }
+
+    public int getSectionY() {
+        return this.internalY - this.offset;
+    }
+
+    public int getSectionZ() {
+        return this.internalZ - this.offset;
+    }
+
+    public int getSectionMaxX() {
+        return this.getSectionX() + this.size;
+    }
+
+    public int getSectionMaxY() {
+        return this.getSectionY() + this.size;
+    }
+
+    public int getSectionMaxZ() {
+        return this.getSectionZ() + this.size;
+    }
+
+    public int getBlockX() {
+        return this.getSectionX() << 4;
+    }
+
+    public int getBlockY() {
+        return this.getSectionY() << 4;
+    }
+
+    public int getBlockZ() {
+        return this.getSectionZ() << 4;
+    }
+
+    public int getBlockMaxX() {
+        return this.getSectionMaxX() << 4;
+    }
+
+    public int getBlockMaxY() {
+        return this.getSectionMaxY() << 4;
+    }
+
+    public int getBlockMaxZ() {
+        return this.getSectionMaxZ() << 4;
+    }
+
+    /**
+     * Checks if the given coordinates in internal section-space are inside this
+     * node.
+     */
+    public abstract boolean contains(int internalX, int internalY, int internalZ);
 
     public abstract boolean isLeaf();
 
@@ -130,6 +159,8 @@ public abstract class Octree {
      * Checks if a box was visible in the given frame. It looks for a child
      * intersecting with the box of which the own or a parent's last visible frame
      * matches the given frame.
+     * 
+     * Uses real section-space coordinates.
      */
     public abstract boolean isBoxVisible(int frame, int minX, int minY, int minZ, int maxX, int maxY, int maxZ);
 
@@ -145,25 +176,20 @@ public abstract class Octree {
     }
 
     public boolean contains(Octree tree) {
-        return contains(tree.x, tree.y, tree.z);
-    }
-
-    int processCoordinate(int coord) {
-        return coord + this.offset;
+        return contains(tree.internalX, tree.internalY, tree.internalZ);
     }
 
     public static int manhattanDistance(Octree a, Octree b) {
-        return Math.abs(a.centerX - b.centerX)
-                + Math.abs(a.centerY - b.centerY)
-                + Math.abs(a.centerZ - b.centerZ);
+        return Math.abs((a.internalX + a.size / 2) - (b.internalX + b.size / 2))
+                + Math.abs((a.internalY + a.size / 2) - (b.internalY + b.size / 2))
+                + Math.abs((a.internalZ + a.size / 2) - (b.internalZ + b.size / 2));
     }
 
     public boolean isWithinDistance(int distance, int centerX, int centerZ) {
-        centerX = processCoordinate(centerX);
-        centerZ = processCoordinate(centerZ);
-
-        return (Math.abs(this.x - centerX) <= distance || Math.abs(this.maxX - centerX) <= distance)
-                && (Math.abs(this.z - centerZ) <= distance || Math.abs(this.maxZ - centerZ) <= distance);
+        return (Math.abs(this.getSectionX() - centerX) <= distance
+                || Math.abs(this.getSectionMaxX() - centerX) <= distance)
+                && (Math.abs(this.getSectionZ() - centerZ) <= distance
+                        || Math.abs(this.getSectionMaxZ() - centerZ) <= distance);
     }
 
     /**
@@ -191,11 +217,11 @@ public abstract class Octree {
     }
 
     public boolean intersectsBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
-        // even if the box is inclusive of both the min and max, xMax is still inside
-        // the octree so it can be included
-        return this.x <= maxX && this.maxX >= minX
-                && this.y <= maxY && this.maxY >= minY
-                && this.z <= maxZ && this.maxZ >= minZ;
+        // even if the box is inclusive of both the min and max, but the max coordinates
+        // don't contain any of the node's space so they are compared with >
+        return this.getSectionX() <= maxX && this.getSectionMaxX() > minX
+                && this.getSectionY() <= maxY && this.getSectionMaxY() > minY
+                && this.getSectionZ() <= maxZ && this.getSectionMaxZ() > minZ;
     }
 
     /**
@@ -229,9 +255,9 @@ public abstract class Octree {
         // Furthermore, if it was smaller than this node, it would be contained within
         // another node that is the same size as this octree node. Thus such a node
         // exists and can be found with these coordinates.
-        int targetX = this.x;
-        int targetY = this.y;
-        int targetZ = this.z;
+        int targetX = this.internalX;
+        int targetY = this.internalY;
+        int targetZ = this.internalZ;
         switch (axisIndex) {
             case 0:
                 targetX += offset;
@@ -313,9 +339,9 @@ public abstract class Octree {
 
     public Octree getAdjacentCommonParent(int axisIndex, int axisSign) {
         int nudge = axisSign > 0 ? 1 : -1;
-        int targetX = this.x;
-        int targetY = this.y;
-        int targetZ = this.z;
+        int targetX = this.internalX;
+        int targetY = this.internalY;
+        int targetZ = this.internalZ;
         switch (axisIndex) {
             case 0:
                 targetX += nudge;

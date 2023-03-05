@@ -32,10 +32,10 @@ public class InnerNode extends Octree {
     }
 
     @Override
-    public boolean contains(int x, int y, int z) {
-        return (x & this.filter) == this.x
-                && (y & this.filter) == this.y
-                && (z & this.filter) == this.z;
+    public boolean contains(int internalX, int internalY, int internalZ) {
+        return (internalX & this.filter) == this.internalX
+                && (internalY & this.filter) == this.internalY
+                && (internalZ & this.filter) == this.internalZ;
     }
 
     @Override
@@ -78,15 +78,15 @@ public class InnerNode extends Octree {
     }
 
     private int getIndexFor(Octree tree) {
-        return getIndexFor(tree.x, tree.y, tree.z);
+        return getIndexFor(tree.internalX, tree.internalY, tree.internalZ);
     }
 
     public void setSection(RenderSection toSet) {
         Objects.requireNonNull(toSet);
 
-        int rsX = processCoordinate(toSet.getChunkX());
-        int rsY = processCoordinate(toSet.getChunkY());
-        int rsZ = processCoordinate(toSet.getChunkZ());
+        int rsX = toSet.getChunkX() + this.offset;
+        int rsY = toSet.getChunkY() + this.offset;
+        int rsZ = toSet.getChunkZ() + this.offset;
 
         if (!contains(rsX, rsY, rsZ)) {
             throw new IllegalArgumentException("Section " + toSet + " is not contained in " + this);
@@ -130,9 +130,9 @@ public class InnerNode extends Octree {
                 int branchIgnoredBits = this.ignoredBits - 1;
                 while (true) {
                     int branchFilter = -1 << branchIgnoredBits;
-                    if ((rsX & branchFilter) != (existingChild.x & branchFilter)
-                            || (rsY & branchFilter) != (existingChild.y & branchFilter)
-                            || (rsZ & branchFilter) != (existingChild.z & branchFilter)) {
+                    if ((rsX & branchFilter) != (existingChild.internalX & branchFilter)
+                            || (rsY & branchFilter) != (existingChild.internalY & branchFilter)
+                            || (rsZ & branchFilter) != (existingChild.internalZ & branchFilter)) {
                         break;
                     }
                     branchIgnoredBits--;
@@ -188,9 +188,9 @@ public class InnerNode extends Octree {
     public void removeSection(RenderSection toRemove) {
         Objects.requireNonNull(toRemove);
 
-        int rsX = processCoordinate(toRemove.getChunkX());
-        int rsY = processCoordinate(toRemove.getChunkY());
-        int rsZ = processCoordinate(toRemove.getChunkZ());
+        int rsX = toRemove.getChunkX() + this.offset;
+        int rsY = toRemove.getChunkY() + this.offset;
+        int rsZ = toRemove.getChunkZ() + this.offset;
 
         if (!contains(rsX, rsY, rsZ)) {
             throw new IllegalArgumentException("Section " + toRemove + " is not contained in " + this);
@@ -268,9 +268,9 @@ public class InnerNode extends Octree {
     public LeafNode getSectionOctree(RenderSection toFind) {
         Objects.requireNonNull(toFind);
 
-        int rsX = processCoordinate(toFind.getChunkX());
-        int rsY = processCoordinate(toFind.getChunkY());
-        int rsZ = processCoordinate(toFind.getChunkZ());
+        int rsX = toFind.getChunkX() + this.offset;
+        int rsY = toFind.getChunkY() + this.offset;
+        int rsZ = toFind.getChunkZ() + this.offset;
 
         if (contains(rsX, rsY, rsZ)) {
             // find the index for the section
@@ -351,17 +351,17 @@ public class InnerNode extends Octree {
                 if (child.getEffectiveIgnoredBits() + 1 < this.ignoredBits) {
                     switch (axisIndex) {
                         case 0:
-                            if (axisSign > 0 ? child.x + child.size != this.x + this.size : child.x != this.x) {
+                            if (axisSign > 0 ? child.internalX + child.size != this.internalX + this.size : child.internalX != this.internalX) {
                                 continue;
                             }
                             break;
                         case 1:
-                            if (axisSign > 0 ? child.y + child.size != this.y + this.size : child.y != this.y) {
+                            if (axisSign > 0 ? child.internalY + child.size != this.internalY + this.size : child.internalY != this.internalY) {
                                 continue;
                             }
                             break;
                         case 2:
-                            if (axisSign > 0 ? child.z + child.size != this.z + this.size : child.z != this.z) {
+                            if (axisSign > 0 ? child.internalZ + child.size != this.internalZ + this.size : child.internalZ != this.internalZ) {
                                 continue;
                             }
                             break;

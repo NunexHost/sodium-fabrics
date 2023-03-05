@@ -10,7 +10,10 @@ public class LeafNode extends Octree {
     public boolean skippable;
 
     LeafNode(RenderSection section, int offset) {
-        super(offset, 1, section.getChunkX(), section.getChunkY(), section.getChunkZ());
+        super(offset, 1,
+                section.getChunkX() + offset,
+                section.getChunkY() + offset,
+                section.getChunkZ() + offset);
 
         Objects.requireNonNull(section);
 
@@ -20,8 +23,10 @@ public class LeafNode extends Octree {
     }
 
     @Override
-    public boolean contains(int x, int y, int z) {
-        return x == this.x && y == this.y && z == this.z;
+    public boolean contains(int internalX, int internalY, int internalZ) {
+        return internalX == this.internalX
+                && internalY == this.internalY
+                && internalZ == this.internalZ;
     }
 
     @Override
