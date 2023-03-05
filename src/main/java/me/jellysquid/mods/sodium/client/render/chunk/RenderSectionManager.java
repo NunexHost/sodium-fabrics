@@ -69,7 +69,7 @@ public class RenderSectionManager {
     private final ClonedChunkSectionCache sectionCache;
 
     private final Long2ReferenceMap<RenderSection> sections = new Long2ReferenceOpenHashMap<>();
-    public final Octree root = Octree.newRoot();
+    public final InnerNode root = Octree.newRoot();
     private final Int2ReferenceMap<ObjectArrayList<QueueEntry>> iterationQueues = new Int2ReferenceOpenHashMap<>(200);
     private int nonEmptyQueues = 0;
 
@@ -791,10 +791,11 @@ public class RenderSectionManager {
 
                 for (Direction dir : DirectionUtil.ALL_DIRECTIONS) {
                     // TODO: deal with this only working sometimes
-                    if (node.isLeaf()) {
-                        RenderSection section = node.section;
+                    if (node instanceof LeafNode leafNode) {
+                        RenderSection section = leafNode.section;
                         if (section == null) {
-                            throw new IllegalStateException("null section");
+                            continue; // TODO: make unnecessary
+                            // throw new IllegalStateException("null section");
                         }
                         if (this.isCulled(section.getGraphInfo(), flow, dir)) {
                             continue;
@@ -827,15 +828,15 @@ public class RenderSectionManager {
             return;
         }
 
-        if (isFrustumCulled(node.origX << 4, node.origY << 4, node.origZ << 4, node.size << 4)) {
+        if (isFrustumCulled(node.realX << 4, node.realY << 4, node.realZ << 4, node.size << 4)) {
             return;
         }
 
         node.setLastVisibleFrame(currentFrame);
 
-        if (parent.isLeaf() && node.isLeaf()) {
-            ChunkGraphInfo info = node.section.getGraphInfo();
-            info.setCullingState(parent.section.getGraphInfo().getCullingState(), flow);
+        if (parent instanceof LeafNode parentLeaf && node instanceof LeafNode nodeLeaf) {
+            ChunkGraphInfo info = nodeLeaf.section.getGraphInfo();
+            info.setCullingState(parentLeaf.section.getGraphInfo().getCullingState(), flow);
         }
 
         // TODO: right distance metric? are center points of octree nodes good?
@@ -857,23 +858,22 @@ public class RenderSectionManager {
         // octree nodes are either leaf nodes or are fully skippable
         // TODO: change this when the BFS also explores unskippable nodes
         // node.iterateUnskippableTree((octree) -> {
-        if (!node.isLeaf()) {
-            return;
-        }
-        RenderSection render = node.section;
+        if (node instanceof LeafNode leafNode) {
+            RenderSection render = leafNode.section;
 
-        if (this.useFogCulling && render.getSquaredDistanceXZ(this.cameraX, this.cameraZ) >= this.fogRenderCutoff) {
-            return;
-        }
+            if (this.useFogCulling && render.getSquaredDistanceXZ(this.cameraX, this.cameraZ) >= this.fogRenderCutoff) {
+                return;
+            }
 
-        int flags = render.getFlags();
+            int flags = render.getFlags();
 
-        if ((flags & RenderSectionFlags.HAS_BLOCK_GEOMETRY) != 0) {
-            this.addChunkToVisible(list, render);
-        }
+            if ((flags & RenderSectionFlags.HAS_BLOCK_GEOMETRY) != 0) {
+                this.addChunkToVisible(list, render);
+            }
 
-        if ((flags & RenderSectionFlags.HAS_BLOCK_ENTITIES) != 0) {
-            this.addEntitiesToRenderLists(render);
+            if ((flags & RenderSectionFlags.HAS_BLOCK_ENTITIES) != 0) {
+                this.addEntitiesToRenderLists(render);
+            }
         }
     }
 

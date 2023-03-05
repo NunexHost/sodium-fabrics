@@ -43,7 +43,7 @@ public class RenderSection {
 
     private int flags;
 
-    public Octree octreeLeaf;
+    public LeafNode octreeLeaf;
 
     public RenderSection(SodiumWorldRenderer worldRenderer, int chunkX, int chunkY, int chunkZ) {
         this.worldRenderer = worldRenderer;
