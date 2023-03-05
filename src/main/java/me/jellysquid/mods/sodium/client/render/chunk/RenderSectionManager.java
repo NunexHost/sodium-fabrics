@@ -240,6 +240,9 @@ public class RenderSectionManager {
     }
 
     private boolean loadSection(int x, int y, int z) {
+        // if (this.sections.containsKey(ChunkSectionPos.asLong(x, y, z))) {
+        //     throw new IllegalStateException("why are sections being loaded twice?");
+        // }
         RenderSection render = new RenderSection(this.worldRenderer, x, y, z);
 
         this.sections.put(ChunkSectionPos.asLong(x, y, z), render);

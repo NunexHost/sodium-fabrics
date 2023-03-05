@@ -1,6 +1,6 @@
 package me.jellysquid.mods.sodium.client.render.chunk.graph;
 
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Consumer;
 
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
@@ -13,12 +13,13 @@ public class InnerNode extends Octree {
     public final int ignoredBits;
     public final int filter;
     public final int selector;
+    public Set<String> contained; // TODO: remove
 
     // the newest lastVisibleFrame of all children
     private int childLastVisibleFrame = -1;
     public int skippableChildren = 0; // skippable meaning containing only empty sections
 
-    public InnerNode(int ignoredBits, int x, int y, int z, int offset) {
+    public InnerNode(int offset, int ignoredBits, int x, int y, int z) {
         // size is same as parent.selector
         super(offset, 1 << ignoredBits, ignoredBits == 32 ? 0 : -1 << ignoredBits, x, y, z);
 
@@ -70,11 +71,11 @@ public class InnerNode extends Octree {
         }
     }
 
-    int getIndexFor(int x, int y, int z) {
+    int getIndexFor(int internalX, int internalY, int internalZ) {
         // TODO: branchless?
-        return ((x & this.selector) == 0 ? 0 : 1)
-                | ((y & this.selector) == 0 ? 0 : 1) << 1
-                | ((z & this.selector) == 0 ? 0 : 1) << 2;
+        return ((internalX & this.selector) == 0 ? 0 : 1)
+                | ((internalY & this.selector) == 0 ? 0 : 1) << 1
+                | ((internalZ & this.selector) == 0 ? 0 : 1) << 2;
     }
 
     private int getIndexFor(Octree tree) {
@@ -83,6 +84,9 @@ public class InnerNode extends Octree {
 
     public void setSection(RenderSection toSet) {
         Objects.requireNonNull(toSet);
+        // if (contained != null && !contained.add(toSet.getChunkPos().toShortString())) {
+        //     throw new IllegalArgumentException("Section " + toSet + " is already contained in " + this);
+        // }
 
         int rsX = toSet.getChunkX() + this.offset;
         int rsY = toSet.getChunkY() + this.offset;
@@ -115,9 +119,10 @@ public class InnerNode extends Octree {
                 if (existingChild instanceof InnerNode existingInnerNode) {
                     // recurse into the existing child
                     existingInnerNode.setSection(toSet);
-                    return;
+                } else if (existingChild instanceof LeafNode existingLeafNode) {
+                    existingLeafNode.setSection(toSet);
                 } else {
-                    throw new IllegalStateException("Can't set a section on a leaf node");
+                    throw new IllegalStateException("Unknown child type: " + existingChild.getClass().getName());
                 }
             } else {
                 // the existing child is skipping some intermediary nodes, it's replaced with a
@@ -144,7 +149,7 @@ public class InnerNode extends Octree {
                 branchIgnoredBits++;
 
                 // creating the new branch will generate the right origin coordinates
-                InnerNode branch = new InnerNode(branchIgnoredBits, rsX, rsY, rsZ, this.offset);
+                InnerNode branch = new InnerNode(this.offset, branchIgnoredBits, rsX, rsY, rsZ);
                 this.children[index] = branch;
                 branch.setParent(this);
 
@@ -187,6 +192,10 @@ public class InnerNode extends Octree {
 
     public void removeSection(RenderSection toRemove) {
         Objects.requireNonNull(toRemove);
+
+        // if (contained != null && !contained.remove(toRemove.getChunkPos().toShortString())) {
+        //     throw new IllegalArgumentException("Section " + toRemove + " is not contained in " + this);
+        // }
 
         int rsX = toRemove.getChunkX() + this.offset;
         int rsY = toRemove.getChunkY() + this.offset;
@@ -265,7 +274,7 @@ public class InnerNode extends Octree {
     }
 
     @Override
-    public LeafNode getSectionOctree(RenderSection toFind) {
+    LeafNode getSectionOctree(RenderSection toFind) {
         Objects.requireNonNull(toFind);
 
         int rsX = toFind.getChunkX() + this.offset;
@@ -351,17 +360,20 @@ public class InnerNode extends Octree {
                 if (child.getEffectiveIgnoredBits() + 1 < this.ignoredBits) {
                     switch (axisIndex) {
                         case 0:
-                            if (axisSign > 0 ? child.internalX + child.size != this.internalX + this.size : child.internalX != this.internalX) {
+                            if (axisSign > 0 ? child.internalX + child.size != this.internalX + this.size
+                                    : child.internalX != this.internalX) {
                                 continue;
                             }
                             break;
                         case 1:
-                            if (axisSign > 0 ? child.internalY + child.size != this.internalY + this.size : child.internalY != this.internalY) {
+                            if (axisSign > 0 ? child.internalY + child.size != this.internalY + this.size
+                                    : child.internalY != this.internalY) {
                                 continue;
                             }
                             break;
                         case 2:
-                            if (axisSign > 0 ? child.internalZ + child.size != this.internalZ + this.size : child.internalZ != this.internalZ) {
+                            if (axisSign > 0 ? child.internalZ + child.size != this.internalZ + this.size
+                                    : child.internalZ != this.internalZ) {
                                 continue;
                             }
                             break;

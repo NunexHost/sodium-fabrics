@@ -84,7 +84,9 @@ public abstract class Octree {
         // offset of 30_000_000 >> 4 = 1_875_000 to bring the coordinates into the
         // positive since the sign bit is the last but we're not looking at it with just
         // 22 bits of coordinates.
-        return new InnerNode(22, 0, 0, 0, 30_000_000 >> 4);
+        InnerNode root = new InnerNode(30_000_000 >> 4, 22, 0, 0, 0);
+        root.contained = new HashSet<>();
+        return root;
     }
 
     public int getSectionX() {
@@ -164,7 +166,7 @@ public abstract class Octree {
      */
     public abstract boolean isBoxVisible(int frame, int minX, int minY, int minZ, int maxX, int maxY, int maxZ);
 
-    public abstract LeafNode getSectionOctree(RenderSection toFind);
+    abstract LeafNode getSectionOctree(RenderSection toFind);
 
     public abstract void iterateFaceNodes(Consumer<Octree> accumulator, int axisIndex, int axisSign,
             boolean acceptSkippable);

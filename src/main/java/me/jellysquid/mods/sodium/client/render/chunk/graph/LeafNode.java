@@ -6,7 +6,7 @@ import java.util.function.Consumer;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 
 public class LeafNode extends Octree {
-    public final RenderSection section;
+    public RenderSection section;
     public boolean skippable;
 
     LeafNode(RenderSection section, int offset) {
@@ -49,6 +49,12 @@ public class LeafNode extends Octree {
         return skippable;
     }
 
+    void setSection(RenderSection toSet) {
+        this.section = toSet;
+        toSet.octreeLeaf = this;
+        updateSectionSkippable();
+    }
+
     @Override
     public void setLastVisibleFrame(int frame) {
         this.lastVisibleFrame = frame;
@@ -63,7 +69,7 @@ public class LeafNode extends Octree {
     }
 
     @Override
-    public LeafNode getSectionOctree(RenderSection toFind) {
+    LeafNode getSectionOctree(RenderSection toFind) {
         Objects.requireNonNull(toFind);
         return this.section == toFind ? this : null;
     }
@@ -79,7 +85,6 @@ public class LeafNode extends Octree {
             return;
         }
         consumer.accept(this);
-        ;
     }
 
     @Override
