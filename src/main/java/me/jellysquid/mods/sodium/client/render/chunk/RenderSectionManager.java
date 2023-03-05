@@ -789,7 +789,7 @@ public class RenderSectionManager {
                 int localDistance = distance;
 
                 // TODO: temporary?
-                node.iterateUnskippableTree((subNode) -> {
+                node.iterateWholeTree((subNode) -> {
                     schedulePendingUpdates(subNode.section);
                 });
                 // if (node.isLeaf()) {
@@ -805,7 +805,7 @@ public class RenderSectionManager {
                             // throw new IllegalStateException("null section");
                         }
                         if (this.isCulled(section.getGraphInfo(), flow, dir)) {
-                            continue;
+                            // continue;
                         }
                     }
 
@@ -833,7 +833,7 @@ public class RenderSectionManager {
             return;
         }
 
-        if (node.isWholeSubtreeVisibleAt(currentFrame)) {
+        if (node.isWholeSubtreeVisibleAt(this.currentFrame)) {
             return;
         }
 
@@ -842,8 +842,6 @@ public class RenderSectionManager {
             return;
         }
 
-        node.setSubtreeVisibleNow(currentFrame);
-
         if (parent instanceof LeafNode parentLeaf && node instanceof LeafNode nodeLeaf) {
             ChunkGraphInfo info = nodeLeaf.section.getGraphInfo();
             info.setCullingState(parentLeaf.section.getGraphInfo().getCullingState(), flow);
@@ -851,6 +849,11 @@ public class RenderSectionManager {
 
         // TODO: right distance metric? are center points of octree nodes good?
         this.addVisible(list, node, flow, distance + Octree.manhattanDistance(parent, node));
+
+        // the node is only marked as visible here, because otherwise all contaiend
+        // nodes wouldn't render since they find a parent with a matching lower visible
+        // frame bound
+        node.setSubtreeVisibleNow(this.currentFrame);
     }
 
     private void addVisible(ChunkRenderListBuilder list, Octree node, Direction flow, int distance) {
@@ -866,6 +869,10 @@ public class RenderSectionManager {
 
         // TODO: using iterateUnskippableTree results in culling issues: at -766, 76, -656 on seed 6820040458059637458 facing down and north, move left and right to see the issue
         node.iterateWholeTree((leafNode) -> {
+            if (leafNode.isWholeSubtreeVisibleAt(currentFrame)) {
+                return;
+            }
+
             RenderSection render = leafNode.section;
 
             if (this.useFogCulling && render.getSquaredDistanceXZ(this.cameraX, this.cameraZ) >= this.fogRenderCutoff) {
