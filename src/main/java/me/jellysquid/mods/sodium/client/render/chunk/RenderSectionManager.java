@@ -650,7 +650,7 @@ public class RenderSectionManager {
                 this.useOcclusionCulling = false;
             }
 
-            rootRender.octreeLeaf.setLastVisibleFrame(frame);
+            rootRender.octreeLeaf.setSubtreeVisibleNow(frame);
             this.addVisible(list, rootRender.octreeLeaf, null, 0);
         } else {
             chunkY = MathHelper.clamp(origin.getY() >> 4, this.world.getBottomSectionCoord(), this.world.getTopSectionCoord() - 1);
@@ -676,7 +676,7 @@ public class RenderSectionManager {
                     }
 
                     info.resetCullingState();
-                    render.octreeLeaf.setLastVisibleFrame(frame);
+                    render.octreeLeaf.setSubtreeVisibleNow(frame);
 
                     this.addVisible(list, render.octreeLeaf, null, render.getManhattanDistance(chunkX, chunkY, chunkZ));
                 }
@@ -775,7 +775,6 @@ public class RenderSectionManager {
     private void iterateChunks(ChunkRenderListBuilder list, Camera camera, Frustum frustum, int frame, boolean spectator) {
         this.initSearch(list, camera, frustum, frame, spectator);
 
-
         // idea: find the largest skippable face adjacent octree and add it to the queue for each direction we want to explore. if it doesn't exist (the adjacent section isn't empty), add the adjacent section (its octree leaf) instead
 
         for (int distance = 0; this.nonEmptyQueues > 0; distance++) {
@@ -812,9 +811,7 @@ public class RenderSectionManager {
 
                     // iterate the adjacent nodes, skipping over the contents of skippable nodes
                     node.iterateFaceAdjacentNodes((faceAdjacent) -> {
-                        if (faceAdjacent.isWithinDistance(this.renderDistance, this.centerChunkX, this.centerChunkZ)) {
-                            this.bfsEnqueue(list, node, faceAdjacent, DirectionUtil.getOpposite(dir), localDistance);
-                        }
+                        this.bfsEnqueue(list, node, faceAdjacent, DirectionUtil.getOpposite(dir), localDistance);
                     }, dir, true);
                 }
             }
@@ -832,7 +829,11 @@ public class RenderSectionManager {
      * section that led to this section being added to the queue.
      */
     private void bfsEnqueue(ChunkRenderListBuilder list, Octree parent, Octree node, Direction flow, int distance) {
-        if (node.getSelfVisibleInFrame(currentFrame)) {
+        if (!node.isWithinDistance(this.renderDistance, this.centerChunkX, this.centerChunkZ)) {
+            return;
+        }
+
+        if (node.isWholeSubtreeVisibleAt(currentFrame)) {
             return;
         }
 
@@ -841,7 +842,7 @@ public class RenderSectionManager {
             return;
         }
 
-        node.setLastVisibleFrame(currentFrame);
+        node.setSubtreeVisibleNow(currentFrame);
 
         if (parent instanceof LeafNode parentLeaf && node instanceof LeafNode nodeLeaf) {
             ChunkGraphInfo info = nodeLeaf.section.getGraphInfo();
@@ -863,11 +864,8 @@ public class RenderSectionManager {
         }
         queue.add(new QueueEntry(node, flow));
 
-        // full content iteration of the octree node isn't necessary if all
-        // octree nodes are either leaf nodes or are fully skippable
-        // TODO: change this when the BFS also explores unskippable nodes
-        // node.iterateUnskippableTree((octree) -> {
-        if (node instanceof LeafNode leafNode) {
+        // TODO: using iterateUnskippableTree results in culling issues: at -766, 76, -656 on seed 6820040458059637458 facing down and north, move left and right to see the issue
+        node.iterateWholeTree((leafNode) -> {
             RenderSection render = leafNode.section;
 
             if (this.useFogCulling && render.getSquaredDistanceXZ(this.cameraX, this.cameraZ) >= this.fogRenderCutoff) {
@@ -883,7 +881,7 @@ public class RenderSectionManager {
             if ((flags & RenderSectionFlags.HAS_BLOCK_ENTITIES) != 0) {
                 this.addEntitiesToRenderLists(render);
             }
-        }
+        });
     }
 
     private void connectNeighborNodes(RenderSection render) {

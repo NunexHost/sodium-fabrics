@@ -15,9 +15,11 @@ public class InnerNode extends Octree {
     public final int selector;
     public Set<String> contained; // TODO: remove
 
-    // the newest lastVisibleFrame of all children
-    private int childLastVisibleFrame = -1;
-    public int skippableChildren = 0; // skippable meaning containing only empty sections
+    // the newest lastVisibleFrame of all children including this node
+    private int upperVisibleFrameBound = -1;
+
+    // skippable meaning containing only empty sections
+    public int skippableChildren = 0;
 
     public InnerNode(int offset, int ignoredBits, int x, int y, int z) {
         // size is same as parent.selector
@@ -59,14 +61,14 @@ public class InnerNode extends Octree {
         return this.skippableChildren == this.ownChildCount;
     }
 
-    @Override
-    public void setLastVisibleFrame(int frame) {
-        // the two are separate because the real lastVisible frame is only updated if
-        // the node itself or a parent (parent unimplemented for now) was visited
-        this.lastVisibleFrame = frame;
+    /**
+     * Sets the upper bound visible frame bound of this node and all parents. Is
+     * called by a child when it becomes visible.
+     */
+    void setChildVisibleNow(int frame) {
         InnerNode node = this;
-        while (node != null && node.childLastVisibleFrame != frame) {
-            node.childLastVisibleFrame = frame;
+        while (node != null && node.upperVisibleFrameBound != frame) {
+            node.upperVisibleFrameBound = frame;
             node = node.parent;
         }
     }
@@ -84,8 +86,10 @@ public class InnerNode extends Octree {
 
     public void setSection(RenderSection toSet) {
         Objects.requireNonNull(toSet);
-        // if (contained != null && !contained.add(toSet.getChunkPos().toShortString())) {
-        //     throw new IllegalArgumentException("Section " + toSet + " is already contained in " + this);
+        // if (contained != null && !contained.add(toSet.getChunkPos().toShortString()))
+        // {
+        // throw new IllegalArgumentException("Section " + toSet + " is already
+        // contained in " + this);
         // }
 
         int rsX = toSet.getChunkX() + this.offset;
@@ -193,8 +197,10 @@ public class InnerNode extends Octree {
     public void removeSection(RenderSection toRemove) {
         Objects.requireNonNull(toRemove);
 
-        // if (contained != null && !contained.remove(toRemove.getChunkPos().toShortString())) {
-        //     throw new IllegalArgumentException("Section " + toRemove + " is not contained in " + this);
+        // if (contained != null &&
+        // !contained.remove(toRemove.getChunkPos().toShortString())) {
+        // throw new IllegalArgumentException("Section " + toRemove + " is not contained
+        // in " + this);
         // }
 
         int rsX = toRemove.getChunkX() + this.offset;
@@ -253,8 +259,11 @@ public class InnerNode extends Octree {
     @Override
     public boolean isBoxVisible(int frame, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         // skip if this frame doesn't appear as a visible frame in any of the children
-        // or if the box doesn't even intersect this node
-        if (this.childLastVisibleFrame != frame || !intersectsBox(minX, minY, minZ, maxX, maxY, maxZ)) {
+        // or if the box doesn't even intersect this node.
+        // no child could be visible if the upper bound doesn't even match the frame
+        // since then all children and the node itself, must have been visible only
+        // earlier.
+        if (this.upperVisibleFrameBound != frame || !intersectsBox(minX, minY, minZ, maxX, maxY, maxZ)) {
             return false;
         }
 

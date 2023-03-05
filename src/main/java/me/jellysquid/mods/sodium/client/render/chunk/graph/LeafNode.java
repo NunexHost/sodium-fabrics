@@ -56,16 +56,8 @@ public class LeafNode extends Octree {
     }
 
     @Override
-    public void setLastVisibleFrame(int frame) {
-        this.lastVisibleFrame = frame;
-        if (this.parent != null) {
-            this.parent.setLastVisibleFrame(frame);
-        }
-    }
-
-    @Override
     public boolean isBoxVisible(int frame, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
-        return this.lastVisibleFrame == frame && intersectsBox(minX, minY, minZ, maxX, maxY, maxZ);
+        return this.lowerVisibleFrameBound == frame && intersectsBox(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
     @Override

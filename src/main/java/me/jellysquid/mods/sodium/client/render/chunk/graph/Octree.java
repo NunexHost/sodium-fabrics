@@ -62,9 +62,8 @@ public abstract class Octree {
     // origin of the node in sections, with offset applied
     public final int internalX, internalY, internalZ;
 
-    // the newest frame in which this node was visible as the root of a subtree. If
-    // a parent was visible in a later frame, this is outdated.
-    int lastVisibleFrame = -1;
+    // the oldest lastVisibleFrame of all children including this node
+    int lowerVisibleFrameBound = -1;
 
     Octree(int offset, int size, int internalX, int internalY, int internalZ) {
         this.offset = offset;
@@ -151,8 +150,6 @@ public abstract class Octree {
 
     public abstract boolean isSkippable();
 
-    public abstract void setLastVisibleFrame(int frame);
-
     public abstract void iterateWholeTree(Consumer<LeafNode> consumer);
 
     public abstract void iterateUnskippableTree(Consumer<LeafNode> consumer);
@@ -195,27 +192,44 @@ public abstract class Octree {
     }
 
     /**
-     * Checks if this node or any of the parents were visible in the given frame. It
-     * has to check the parents because parents don't set lastVisibleFrame on all
-     * children (too much effort).
+     * Marks a whole subtree as visible at the given frame. Also sets the upper
+     * bound on all parents but not the lower bound on all children. Instead, the
+     * getAncestorsLowerBound method will automatically increase the lower bound on
+     * the way downards from a node with a lower bound. Lower bounds are propagated
+     * downwards since knowing a lower bound of a parent implies that all children
+     * must have the same lower bound. Inversely, an upper bound is propagated
+     * downwards, since if a child has a higher upper bound, the parent must have
+     * the same higher upper bound.
      */
-    public boolean getSelfVisibleInFrame(int frame) {
-        return this.stepSelfVisibleInFrame(frame) == frame;
+    public void setSubtreeVisibleNow(int frame) {
+        this.lowerVisibleFrameBound = frame;
+        if (this.parent != null) {
+            this.parent.setChildVisibleNow(frame);
+        }
     }
 
-    // recursive so that we can set the lastVisibleFrame on the way back down
-    int stepSelfVisibleInFrame(int frame) {
-        if (this.lastVisibleFrame == frame) {
-            return frame;
+    /**
+     * A node is visible at the given frame if the lower visible frame bound of the
+     * node itself or that of any parent is at least this frame. Updates the lower
+     * visible frame bound on all parents to the given frame if a parent with the
+     * given frame as its lower visible frame bound is found.
+     */
+    public boolean isWholeSubtreeVisibleAt(int frame) {
+        return this.getAncestorsLowerBound(frame) == frame;
+    }
+
+    int getAncestorsLowerBound(int frame) {
+        if (this.lowerVisibleFrameBound == frame) {
+            return this.lowerVisibleFrameBound;
         }
         if (this.parent != null) {
-            int result = this.parent.stepSelfVisibleInFrame(frame);
+            int result = this.parent.getAncestorsLowerBound(frame);
             if (result == frame) {
-                this.lastVisibleFrame = frame;
+                this.lowerVisibleFrameBound = frame;
             }
             return result;
         }
-        return this.lastVisibleFrame;
+        return this.lowerVisibleFrameBound;
     }
 
     public boolean intersectsBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
