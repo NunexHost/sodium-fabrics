@@ -84,7 +84,7 @@ public abstract class Octree {
         // positive since the sign bit is the last but we're not looking at it with just
         // 22 bits of coordinates.
         InnerNode root = new InnerNode(30_000_000 >> 4, 22, 0, 0, 0);
-        root.contained = new HashSet<>();
+        // root.contained = new HashSet<>();
         return root;
     }
 
@@ -239,6 +239,13 @@ public abstract class Octree {
                 && this.getSectionY() <= maxY && this.getSectionMaxY() > minY
                 && this.getSectionZ() <= maxZ && this.getSectionMaxZ() > minZ;
     }
+
+    /**
+     * Does a recursive check if the ray from the center of the node to the camera
+     * is occluded by an entirely non-skippable node.
+     */
+    // public boolean isOccluded(float cameraX, float cameraY, float cameraZ) {
+    // }
 
     /**
      * Returns the octree node adjacent to the given face of this node of the same

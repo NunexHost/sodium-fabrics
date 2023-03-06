@@ -811,7 +811,7 @@ public class RenderSectionManager {
 
                     // iterate the adjacent nodes, skipping over the contents of skippable nodes
                     node.iterateFaceAdjacentNodes((faceAdjacent) -> {
-                        this.bfsEnqueue(list, node, faceAdjacent, DirectionUtil.getOpposite(dir), localDistance);
+                        this.bfsEnqueue(list, camera, node, faceAdjacent, DirectionUtil.getOpposite(dir), localDistance);
                     }, dir, true);
                 }
             }
@@ -828,7 +828,7 @@ public class RenderSectionManager {
      * visible. The culling state is updated with the culling state of the parent
      * section that led to this section being added to the queue.
      */
-    private void bfsEnqueue(ChunkRenderListBuilder list, Octree parent, Octree node, Direction flow, int distance) {
+    private void bfsEnqueue(ChunkRenderListBuilder list, Camera camera, Octree parent, Octree node, Direction flow, int distance) {
         if (!node.isWithinDistance(this.renderDistance, this.centerChunkX, this.centerChunkZ)) {
             return;
         }
@@ -841,6 +841,11 @@ public class RenderSectionManager {
             node.getBlockMaxX(), node.getBlockMaxY(), node.getBlockMaxZ())) {
             return;
         }
+
+        // Vec3d cameraPos = camera.getPos();
+        // if (node.isOccluded((float)cameraPos.x, (float)cameraPos.y, (float)cameraPos.z)) {
+        //     return;
+        // }
 
         if (parent instanceof LeafNode parentLeaf && node instanceof LeafNode nodeLeaf) {
             ChunkGraphInfo info = nodeLeaf.section.getGraphInfo();

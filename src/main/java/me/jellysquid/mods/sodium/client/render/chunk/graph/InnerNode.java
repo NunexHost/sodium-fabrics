@@ -13,7 +13,7 @@ public class InnerNode extends Octree {
     public final int ignoredBits;
     public final int filter;
     public final int selector;
-    public Set<String> contained; // TODO: remove
+    // public Set<String> contained; // TODO: remove
 
     // the newest lastVisibleFrame of all children including this node
     private int upperVisibleFrameBound = -1;
