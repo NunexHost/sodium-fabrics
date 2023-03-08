@@ -123,13 +123,19 @@ public final class GraphSearch {
             }
 
             var visibilityData = this.useOcclusionCulling ? GraphNode.unpackConnections(node) : -1;
+            int indexData = VisibilityEncoding.getIndexesForIncoming(incomingDirection);
+            // int indexData1 = VisibilityEncoding.getIndexesForIncoming(incomingDirection1);
+            // int indexData2 = VisibilityEncoding.getIndexesForIncoming(incomingDirection2);
+            // int indexData3 = VisibilityEncoding.getIndexesForIncoming(incomingDirection3);
 
+            // ordering of these checks needs to be ascending in the GraphDirection indexing of directions
             if (y > this.minY) {
                 // y - 1
-                if ((y <= this.midY) && canTraverse(visibilityData, incomingDirection, GraphDirection.DOWN)) {
+                if ((y <= this.midY) && canTraverse(visibilityData, incomingDirection, indexData)) {
                     this.tryEnqueueNeighbor(queue, GraphDirection.DOWN, x, y - 1, z);
                 }
             }
+            indexData = VisibilityEncoding.stepPackedIndexes(indexData);
 
             if (y < this.maxY) {
                 // y + 1
@@ -137,6 +143,7 @@ public final class GraphSearch {
                     this.tryEnqueueNeighbor(queue, GraphDirection.UP, x, y + 1, z);
                 }
             }
+            indexData = VisibilityEncoding.stepPackedIndexes(indexData);
 
             if (z > this.minZ) {
                 // z - 1
@@ -144,6 +151,7 @@ public final class GraphSearch {
                     this.tryEnqueueNeighbor(queue, GraphDirection.NORTH, x, y, z - 1);
                 }
             }
+            indexData = VisibilityEncoding.stepPackedIndexes(indexData);
 
             if (z < this.maxZ) {
                 // z + 1
@@ -151,6 +159,15 @@ public final class GraphSearch {
                     this.tryEnqueueNeighbor(queue, GraphDirection.SOUTH, x, y, z + 1);
                 }
             }
+            indexData = VisibilityEncoding.stepPackedIndexes(indexData);
+
+            if (x < this.maxX) {
+                // x + 1
+                if ((x >= this.midX) && canTraverse(visibilityData, incomingDirection, GraphDirection.WEST)) {
+                    this.tryEnqueueNeighbor(queue, GraphDirection.WEST, x + 1, y, z);
+                }
+            }
+            indexData = VisibilityEncoding.stepPackedIndexes(indexData);
 
             if (x > this.minX) {
                 // x - 1
@@ -159,23 +176,12 @@ public final class GraphSearch {
                 }
             }
 
-            if (x < this.maxX) {
-                // x + 1
-                if ((x >= this.midX) && canTraverse(visibilityData, incomingDirection, GraphDirection.WEST)) {
-                    this.tryEnqueueNeighbor(queue, GraphDirection.WEST, x + 1, y, z);
-                }
-            }
-
             renderList.add(GraphNode.unpackFlags(node), GraphNode.unpackRegion(node), getLocalChunkIndex(x, y, z));
         }
     }
 
-    private static boolean canTraverse(int visibilityData, int incomingDirection, int outgoingDirection) {
-        return incomingDirection == GraphDirection.NONE || isVisibleThrough(visibilityData, incomingDirection, outgoingDirection);
-    }
-
-    private static boolean isVisibleThrough(int visibilityData, int incomingDirection, int outgoingDirection) {
-        return VisibilityEncoding.isConnected(visibilityData, incomingDirection, outgoingDirection);
+    private static boolean canTraverse(int visibilityData, int incomingDirection, int indexData) {
+        return incomingDirection == GraphDirection.NONE || VisibilityEncoding.isConnectedIndexed(visibilityData, indexData);
     }
 
     private void tryEnqueueNeighbor(ChunkGraphIterationQueue queue, int direction, int x, int y, int z) {
