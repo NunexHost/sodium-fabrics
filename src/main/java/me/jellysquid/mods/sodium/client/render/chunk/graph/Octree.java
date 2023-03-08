@@ -83,7 +83,8 @@ public abstract class Octree {
         // offset of 30_000_000 >> 4 = 1_875_000 to bring the coordinates into the
         // positive since the sign bit is the last but we're not looking at it with just
         // 22 bits of coordinates.
-        InnerNode root = new InnerNode(30_000_000 >> 4, 22, 0, 0, 0);
+        // InnerNode root = new InnerNode(30_000_000 >> 4, 22, 0, 0, 0);
+        InnerNode root = new InnerNode(1000, 22, 0, 0, 0);
         // root.contained = new HashSet<>();
         return root;
     }
@@ -178,17 +179,20 @@ public abstract class Octree {
         return contains(tree.internalX, tree.internalY, tree.internalZ);
     }
 
-    public static int manhattanDistance(Octree a, Octree b) {
-        return Math.abs((a.internalX + a.size / 2) - (b.internalX + b.size / 2))
-                + Math.abs((a.internalY + a.size / 2) - (b.internalY + b.size / 2))
-                + Math.abs((a.internalZ + a.size / 2) - (b.internalZ + b.size / 2));
+    public boolean isWithinDistance(int distance, int cameraX, int cameraZ) {
+        return (Math.abs(this.getSectionX() - cameraX) <= distance
+                || Math.abs(this.getSectionMaxX() - cameraX) <= distance)
+                && (Math.abs(this.getSectionZ() - cameraZ) <= distance
+                        || Math.abs(this.getSectionMaxZ() - cameraZ) <= distance);
     }
 
-    public boolean isWithinDistance(int distance, int centerX, int centerZ) {
-        return (Math.abs(this.getSectionX() - centerX) <= distance
-                || Math.abs(this.getSectionMaxX() - centerX) <= distance)
-                && (Math.abs(this.getSectionZ() - centerZ) <= distance
-                        || Math.abs(this.getSectionMaxZ() - centerZ) <= distance);
+    public int getCameraDistance(int cameraX, int cameraY, int cameraZ) {
+        return Math.min(Math.abs(this.getSectionX() - cameraX),
+                Math.abs(this.getSectionMaxX() - cameraX))
+                + Math.min(Math.abs(this.getSectionY() - cameraY),
+                        Math.abs(this.getSectionMaxY() - cameraY))
+                + Math.min(Math.abs(this.getSectionZ() - cameraZ),
+                        Math.abs(this.getSectionMaxZ() - cameraZ));
     }
 
     /**

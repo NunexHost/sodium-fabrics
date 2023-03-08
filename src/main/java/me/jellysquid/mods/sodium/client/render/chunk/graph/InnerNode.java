@@ -258,6 +258,9 @@ public class InnerNode extends Octree {
 
     @Override
     public boolean isBoxVisible(int frame, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        // TODO: problem: some but not all children appear to be gone from the root and are missiing a upper visible frame bound when this method is run but not otherwise. (this method is run to check if entities should be rendered)
+
+
         // skip if this frame doesn't appear as a visible frame in any of the children
         // or if the box doesn't even intersect this node.
         // no child could be visible if the upper bound doesn't even match the frame

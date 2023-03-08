@@ -72,6 +72,7 @@ public class RenderSectionManager {
     public final InnerNode root = Octree.newRoot();
     private final Int2ReferenceMap<ObjectArrayList<QueueEntry>> iterationQueues = new Int2ReferenceOpenHashMap<>(200);
     private int nonEmptyQueues = 0;
+    private int queueIndexLowerBound = 0;
 
     private final Map<ChunkUpdateType, PriorityQueue<RenderSection>> rebuildQueues = new EnumMap<>(ChunkUpdateType.class);
 
@@ -243,6 +244,9 @@ public class RenderSectionManager {
         // if (this.sections.containsKey(ChunkSectionPos.asLong(x, y, z))) {
         //     throw new IllegalStateException("why are sections being loaded twice?");
         // }
+        if (y != 4) {
+            // return false;
+        }
         RenderSection render = new RenderSection(this.worldRenderer, x, y, z);
 
         this.sections.put(ChunkSectionPos.asLong(x, y, z), render);
@@ -266,6 +270,9 @@ public class RenderSectionManager {
         RenderSection chunk = this.sections.remove(ChunkSectionPos.asLong(x, y, z));
         if (this.nonEmptyQueues > 0) {
             throw new IllegalStateException("why are sections being unloaded while the bfs is running?");
+        }
+        if (chunk == null) {
+            return false;
         }
         root.removeSection(chunk);
 
@@ -650,8 +657,7 @@ public class RenderSectionManager {
                 this.useOcclusionCulling = false;
             }
 
-            rootRender.octreeLeaf.setSubtreeVisibleNow(frame);
-            this.addVisible(list, rootRender.octreeLeaf, null, 0);
+            this.addVisible(list, rootRender.octreeLeaf, null, origin);
         } else {
             chunkY = MathHelper.clamp(origin.getY() >> 4, this.world.getBottomSectionCoord(), this.world.getTopSectionCoord() - 1);
 
@@ -676,9 +682,8 @@ public class RenderSectionManager {
                     }
 
                     info.resetCullingState();
-                    render.octreeLeaf.setSubtreeVisibleNow(frame);
 
-                    this.addVisible(list, render.octreeLeaf, null, render.getManhattanDistance(chunkX, chunkY, chunkZ));
+                    this.addVisible(list, render.octreeLeaf, null, origin);
                 }
             }
         }
@@ -738,7 +743,7 @@ public class RenderSectionManager {
         // check if within a visible box to avoid checking the frustum
         // TODO: do any more corners need to be checked?
         // TODO: Do both corners need to be check if they are just single sections?
-        if (!isVisibleInBox(minX, minY, minZ) && !isVisibleInBox(maxX, maxY, maxZ)) {
+        if (!(isVisibleInBox(minX, minY, minZ) || isVisibleInBox(maxX, maxY, maxZ))) {
             frustumCheckActualCount++;
             if(!frustum.isBoxVisible(minX, minY, minZ, maxX, maxY, maxZ)) {
                 return true;
@@ -777,7 +782,8 @@ public class RenderSectionManager {
 
         // idea: find the largest skippable face adjacent octree and add it to the queue for each direction we want to explore. if it doesn't exist (the adjacent section isn't empty), add the adjacent section (its octree leaf) instead
 
-        for (int distance = 0; this.nonEmptyQueues > 0; distance++) {
+        int distance = 0;
+        while (this.nonEmptyQueues > 0) {
             ObjectArrayList<QueueEntry> queue = this.iterationQueues.get(distance);
             if (queue == null) {
                 continue;
@@ -786,7 +792,6 @@ public class RenderSectionManager {
                 QueueEntry entry = queue.get(i);
                 Octree node = entry.node;
                 Direction flow = entry.flow;
-                int localDistance = distance;
 
                 // TODO: temporary?
                 node.iterateWholeTree((subNode) -> {
@@ -811,14 +816,26 @@ public class RenderSectionManager {
 
                     // iterate the adjacent nodes, skipping over the contents of skippable nodes
                     node.iterateFaceAdjacentNodes((faceAdjacent) -> {
-                        this.bfsEnqueue(list, camera, node, faceAdjacent, DirectionUtil.getOpposite(dir), localDistance);
+                        this.bfsEnqueue(list, camera, node, faceAdjacent, DirectionUtil.getOpposite(dir));
                     }, dir, true);
                 }
             }
             queue.clear();
             nonEmptyQueues--;
+
+            // move the next queue to look at to the lower bound of the distance
+            // in case a queue with a lower distance was added
+            distance = Math.min(distance, this.queueIndexLowerBound);
         }
+        if (lastCulledNodes != null && !lastCulledNodes.equals(culledNodes)) {
+            System.out.println("culled nodes changed");
+        }
+        lastCulledNodes = culledNodes;
+        culledNodes = new HashSet<>();
     }
+
+    private Set<Octree> culledNodes = new HashSet<>();
+    private Set<Octree> lastCulledNodes;
 
     /**
      * Adds a render section to the BFS queue. It checks that the section hasn't
@@ -828,7 +845,7 @@ public class RenderSectionManager {
      * visible. The culling state is updated with the culling state of the parent
      * section that led to this section being added to the queue.
      */
-    private void bfsEnqueue(ChunkRenderListBuilder list, Camera camera, Octree parent, Octree node, Direction flow, int distance) {
+    private void bfsEnqueue(ChunkRenderListBuilder list, Camera camera, Octree parent, Octree node, Direction flow) {
         if (!node.isWithinDistance(this.renderDistance, this.centerChunkX, this.centerChunkZ)) {
             return;
         }
@@ -837,8 +854,9 @@ public class RenderSectionManager {
             return;
         }
 
-        if (isFrustumCulled(node.getBlockX(), node.getBlockY(), node.getBlockZ(),
+        if (!this.frustum.isBoxVisible(node.getBlockX(), node.getBlockY(), node.getBlockZ(),
             node.getBlockMaxX(), node.getBlockMaxY(), node.getBlockMaxZ())) {
+            culledNodes.add(node);
             return;
         }
 
@@ -852,16 +870,11 @@ public class RenderSectionManager {
             info.setCullingState(parentLeaf.section.getGraphInfo().getCullingState(), flow);
         }
 
-        // TODO: right distance metric? are center points of octree nodes good?
-        this.addVisible(list, node, flow, distance + Octree.manhattanDistance(parent, node));
-
-        // the node is only marked as visible here, because otherwise all contaiend
-        // nodes wouldn't render since they find a parent with a matching lower visible
-        // frame bound
-        node.setSubtreeVisibleNow(this.currentFrame);
+        this.addVisible(list, node, flow, camera.getBlockPos());
     }
 
-    private void addVisible(ChunkRenderListBuilder list, Octree node, Direction flow, int distance) {
+    private void addVisible(ChunkRenderListBuilder list, Octree node, Direction flow, BlockPos origin) {
+        int distance = node.getCameraDistance(origin.getX() >> 4, origin.getY() >> 4, origin.getZ() >> 4);
         ObjectArrayList<QueueEntry> queue = this.iterationQueues.get(distance);
         if (queue == null) {
             queue = new ObjectArrayList<>();
@@ -869,11 +882,14 @@ public class RenderSectionManager {
         }
         if (queue.isEmpty()) {
             this.nonEmptyQueues++;
+            this.queueIndexLowerBound = Math.min(this.queueIndexLowerBound, distance);
         }
         queue.add(new QueueEntry(node, flow));
 
         // TODO: using iterateUnskippableTree results in culling issues: at -766, 76, -656 on seed 6820040458059637458 facing down and north, move left and right to see the issue
+        // TODO: when iterating large nodes, do resursive descent and cull the nodes outside the frustum/render distance
         node.iterateWholeTree((leafNode) -> {
+            // don't add the same sections twice
             if (leafNode.isWholeSubtreeVisibleAt(currentFrame)) {
                 return;
             }
@@ -894,6 +910,11 @@ public class RenderSectionManager {
                 this.addEntitiesToRenderLists(render);
             }
         });
+
+        // the node is only marked as visible here, because otherwise all contaiend
+        // nodes wouldn't render since they find a parent with a matching lower visible
+        // frame bound
+        node.setSubtreeVisibleNow(this.currentFrame);
     }
 
     private void connectNeighborNodes(RenderSection render) {
