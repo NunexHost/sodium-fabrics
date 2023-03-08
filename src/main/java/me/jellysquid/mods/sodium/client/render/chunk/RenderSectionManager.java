@@ -10,8 +10,7 @@ import me.jellysquid.mods.sodium.client.render.SodiumWorldRenderer;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.data.ChunkRenderData;
-import me.jellysquid.mods.sodium.client.render.chunk.graph.ChunkGraphIterationQueue;
-import me.jellysquid.mods.sodium.client.render.chunk.graph.Graph;
+import me.jellysquid.mods.sodium.client.render.chunk.graph.*;
 import me.jellysquid.mods.sodium.client.render.chunk.lists.ChunkRenderList;
 import me.jellysquid.mods.sodium.client.render.chunk.lists.ChunkRenderListBuilder;
 import me.jellysquid.mods.sodium.client.render.chunk.region.RenderRegionManager;
@@ -67,6 +66,7 @@ public class RenderSectionManager {
     private final ChunkRenderListBuilder.Cache renderListCache = new ChunkRenderListBuilder.Cache();
 
     private final Graph graph;
+    private FrustumTest frustumTest; // TODO: final
     private final SodiumWorldRenderer worldRenderer;
 
     public RenderSectionManager(SodiumWorldRenderer worldRenderer, ClientWorld world, int renderDistance, ChunkTracker chunkTracker, CommandList commandList) {
@@ -104,7 +104,13 @@ public class RenderSectionManager {
 
         var renderListBuilder = new ChunkRenderListBuilder(this.regions.getStorage(), this.renderListCache);
 
-        var search = this.graph.createSearch(camera, frustum, useOcclusionCulling);
+        // TODO: remove
+        if (this.frustumTest == null || this.frustumTest.getClass() != FrustumBoxTest.class) {
+            this.frustumTest = new FrustumBoxTest();
+            // this.frustumTest = new FrustumDirectTest();
+        }
+        this.frustumTest.initWithFrustum(frustum);
+        var search = this.graph.createSearch(camera, this.frustumTest, useOcclusionCulling);
         search.getVisible(renderListBuilder);
 
         this.renderList = renderListBuilder.build();
@@ -179,7 +185,7 @@ public class RenderSectionManager {
         RenderDevice device = RenderDevice.INSTANCE;
         CommandList commandList = device.createCommandList();
 
-        this.chunkRenderer.render(matrices, commandList, this.renderList, pass, new ChunkCameraContext(x, y, z));
+        // this.chunkRenderer.render(matrices, commandList, this.renderList, pass, new ChunkCameraContext(x, y, z));
 
         commandList.flush();
     }
@@ -404,6 +410,8 @@ public class RenderSectionManager {
         list.add(String.format("Device memory: %d/%d MiB", MathUtil.toMib(deviceUsed), MathUtil.toMib(deviceAllocated)));
 
         list.add(String.format("Staging buffer: %s", this.regions.getStagingBuffer().toString()));
+
+        this.frustumTest.collectDebugStrings(list);
 
         return list;
     }

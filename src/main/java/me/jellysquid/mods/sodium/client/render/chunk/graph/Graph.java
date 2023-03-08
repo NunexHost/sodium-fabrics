@@ -56,9 +56,9 @@ public class Graph {
         return ((x & this.maskXZ) << (this.offsetX)) | ((z & this.maskXZ) << this.offsetZ) | (y & this.maskY);
     }
 
-    public GraphSearch createSearch(Camera camera, Frustum frustum, boolean useOcclusionCulling) {
+    public GraphSearch createSearch(Camera camera, FrustumTest frustumTest, boolean useOcclusionCulling) {
         this.clearVisited();
-        return new GraphSearch(this, camera, frustum, this.renderDistance, useOcclusionCulling);
+        return new GraphSearch(this, camera, frustumTest, this.renderDistance, useOcclusionCulling);
     }
 
     public int size() {

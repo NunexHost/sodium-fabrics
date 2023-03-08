@@ -12,7 +12,7 @@ import net.minecraft.util.math.MathHelper;
 
 public final class GraphSearch {
     private final Graph graph;
-    private final Frustum frustum;
+    private final FrustumTest frustumTest;
 
     private final boolean useOcclusionCulling;
 
@@ -20,7 +20,7 @@ public final class GraphSearch {
     private final int minX, minY, minZ;
     private final int maxX, maxY, maxZ;
 
-    GraphSearch(Graph graph, Camera camera, Frustum frustum, int renderDistance, boolean useOcclusionCulling) {
+    GraphSearch(Graph graph, Camera camera, FrustumTest frustumTest, int renderDistance, boolean useOcclusionCulling) {
         this.graph = graph;
 
         BlockPos cameraBlockPos = camera.getBlockPos();
@@ -29,7 +29,7 @@ public final class GraphSearch {
         this.midY = cameraBlockPos.getY() >> 4;
         this.midZ = cameraBlockPos.getZ() >> 4;
 
-        this.frustum = frustum;
+        this.frustumTest = frustumTest;
 
         this.useOcclusionCulling = useOcclusionCulling;
 
@@ -68,7 +68,7 @@ public final class GraphSearch {
                 var nodeId = this.graph.getIndex(x, y, z);
                 var node = this.graph.getNode(nodeId);
 
-                if (!GraphNode.isLoaded(node) || !isVisible(this.frustum, x, y, z)) {
+                if (!GraphNode.isLoaded(node) || this.frustumTest.isFrustumCulled(x, y, z)) {
                     continue;
                 }
 
@@ -111,7 +111,7 @@ public final class GraphSearch {
 
             var incomingDirection = GraphDirection.opposite(queue.getDirection(index));
 
-            if (!isVisible(this.frustum, x, y, z)) {
+            if (this.frustumTest.isFrustumCulled(x, y, z)) {
                 continue;
             }
 
@@ -196,14 +196,6 @@ public final class GraphSearch {
 
         // mark as visited so that the node is not enqueued multiple times
         this.graph.markVisited(this.graph.getIndex(x, y, z));
-    }
-
-    private static boolean isVisible(Frustum frustum, int chunkX, int chunkY, int chunkZ) {
-        float posX = (chunkX << 4);
-        float posY = (chunkY << 4);
-        float posZ = (chunkZ << 4);
-
-        return frustum.isBoxVisible(posX, posY, posZ, posX + 16.0f, posY + 16.0f, posZ + 16.0f);
     }
 
     private static int getLocalChunkIndex(int x, int y, int z) {
