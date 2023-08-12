@@ -1,0 +1,30 @@
+name: Moderation
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - reopened
+jobs:
+  moderate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Moderate issues
+        uses: tachiyomiorg/issue-moderator-action@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-close-rules: |
+            [
+              {
+                "type": "Detect missing log file",
+                "regex": "^[^]*### Bug Description[^]+### Attach Log File(?![^]+\\[.+\\]\\(https:\\/\\/github\\.com\\/.+\\/.+\\/files\\/.+[^]+### Attach Crash Report)",
+                "closeIfMatch": true,
+                "message": "@${issue.user.login} this issue was automatically closed because it did not follow the issue template. You did not upload a log file or not in the required format. Attach a log file and a crashlog as described in the issue template by dragging and dropping the file and letting GitHub create an attachment. Do not copy-paste the content of the log file into the textarea. Please edit your issue to add the required data and issue will be automatically be reopened."
+              },
+              {
+                "type": "Detect missing crash report",
+                "regex": "^[^]*### Bug Description[^]+### Attach Crash Report(?![^]+\\[.+\\]\\(https:\\/\\/github\\.com\\/.+\\/.+\\/files\\/.+)",
+                "closeIfMatch": true,
+                "message": "@${issue.user.login} this issue was automatically closed because it did not follow the issue template. You did not upload a crashlog or not in the required format. Attach a log file and a crashlog as described in the issue template by dragging and dropping the file and letting GitHub create an attachment. Do not copy-paste the content of the log file into the textarea. Please edit your issue to add the required data to the corresponding sections of the issue and it will be automatically be reopened."
+              }
+            ]
