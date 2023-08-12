@@ -51,7 +51,7 @@ body:
         Attach the most recent log file from your client (`logs/latest.log`). This file should always be present.
 
         **Important:** Upload the file to this issue as an attachment by first selecting the textarea and then dragging the file onto it.
-        GitHub will upload the file as an attachment and generate a link to it. This issue will automatically be closed if you omit a log
+        GitHub will upload the file as an attachment and generate a link to it. This issue will be automatically closed if you omit a log
         file or copy-paste its content here.
       placeholder: >-
         Upload the log file here with drag-and-drop. It should create an attachment...
