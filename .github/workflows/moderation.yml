@@ -26,5 +26,11 @@ jobs:
                 "regex": "^[^]*### Bug Description[^]+### Attach Crash Report(?![^]+\\[.+\\]\\(https:\\/\\/github\\.com\\/.+\\/.+\\/files\\/.+)",
                 "closeIfMatch": true,
                 "message": "@${issue.user.login} this issue was automatically closed because it did not follow the issue template. You did not upload a crashlog or not in the required format. Attach a log file and a crashlog as described in the issue template by dragging and dropping the file and letting GitHub create an attachment. Do not copy-paste the content of the log file into the textarea. Please edit your issue to add the required data to the corresponding sections of the issue and it will be automatically be reopened."
+              },
+              {
+                "type": "test",
+                "regex": "432432423\\[",
+                "closeIfMatch": true,
+                "message": "@${issue.user.login} found 432432423["
               }
             ]
