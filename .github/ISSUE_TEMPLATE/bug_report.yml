@@ -60,7 +60,7 @@ body:
   - type: textarea
     id: crash-report-file
     attributes:
-      label: Crash Report
+      label: Attach Crash Report
       description: >-
         Attach the most recent crash report from the `crash-reports` folder. This file must also be attached as file and not by copy-pasting.
         This is different from the log file above, and it contains important information about your hardware and software configuration.
