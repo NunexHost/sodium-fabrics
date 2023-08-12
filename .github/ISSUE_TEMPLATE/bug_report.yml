@@ -68,6 +68,6 @@ body:
         **Important:** If your game is not crashing as a result of your problem, then you need to obtain a crash report manually. This can be done
         by loading the game to the main menu, and holding the F3+C keys together for approximately 10 seconds.
       placeholder: >-
-        Upload the crash report file here...
+        Upload the crash report file here with drag-and-drop. It should create an attachment...
     validations:
       required: true
