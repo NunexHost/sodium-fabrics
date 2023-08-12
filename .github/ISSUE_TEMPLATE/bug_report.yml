@@ -10,14 +10,14 @@ body:
 
         - **Have you read the [list of known issues](https://github.com/CaffeineMC/sodium-fabric/wiki/Driver-Compatibility)?** Most problems
         (such as poor performance) are caused by out-of-date or incompatible graphics drivers.
-        
+
         - **Have you used the [search tool](https://github.com/CaffeineMC/sodium-fabric/issues) to see if someone has already
         reported this problem?** If there is already an issue which describes your problem exactly, you should prefer to
         add information to that issue, rather than open a new one.
-        
+
         - **Have you ensured that all of your mods (including Sodium) are up-to-date?** The latest version of Sodium
         can always be found [on Modrinth](https://modrinth.com/mod/sodium).
-        
+
         - **If the issue occurs only with other mods installed, have you determined which mods exactly are causing the problem?** Please do not
         provide your entire mod list and expect us to be able to find which mods are causing the problem. You may try using
         a _binary search_ (also known as "divide and conquer") to figure out which mods are problematic.
@@ -39,7 +39,7 @@ body:
       description: >-
         Provide as much information as possible on how to reproduce this bug. Make sure your instructions are as clear and
         concise as possible, because other people will need to be able to follow your guide in order to re-create the issue.
-        
+
         **Hint:**  A common way to fill this section out is to write a step-by-step guide.
     validations:
       required: true
