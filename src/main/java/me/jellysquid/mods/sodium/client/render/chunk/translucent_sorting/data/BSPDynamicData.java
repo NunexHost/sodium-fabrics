@@ -7,6 +7,7 @@ import me.jellysquid.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPNode;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPResult;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import net.minecraft.util.math.ChunkSectionPos;
 
@@ -25,8 +26,16 @@ public class BSPDynamicData extends DynamicData {
 
     @Override
     public void sortOnTrigger(Vector3fc cameraPos) {
+        var start = System.nanoTime();
         this.sort(cameraPos);
+        sortTriggerRecorder.recordNow(this.getLength(), start);
     }
+
+    // /tp ~ ~-100 ~
+    public static final TimingRecorder sortInitialRecorder = new TimingRecorder("BSP sort initial");
+    public static final TimingRecorder sortTriggerRecorder = new TimingRecorder("BSP sort trigger");
+    public static final TimingRecorder buildRecorder = new TimingRecorder("BSP build");
+    public static final TimingRecorder partialUpdateRecorder = new TimingRecorder("BSP partial update", 10, true);
 
     private void sort(Vector3fc cameraPos) {
         this.unsetReuseUploadedData();
@@ -48,13 +57,23 @@ public class BSPDynamicData extends DynamicData {
             // (times the section has been built)
             prepareNodeReuse = generation >= NODE_REUSE_MIN_GENERATION;
         }
+
+        var start = System.nanoTime();
         var result = BSPNode.buildBSP(quads, sectionPos, oldRoot, prepareNodeReuse);
+        if (oldRoot == null) {
+            buildRecorder.recordNow(quads.length, start);
+        } else {
+            partialUpdateRecorder.recordNow(quads.length, start);
+        }
 
         VertexRange range = TranslucentData.getUnassignedVertexRange(translucentMesh);
         buffer = PresentTranslucentData.nativeBufferForQuads(buffer, quads);
 
         var dynamicData = new BSPDynamicData(sectionPos, buffer, range, result, generation);
+
+        start = System.nanoTime();
         dynamicData.sort(cameraPos);
+        sortInitialRecorder.recordNow(quads.length, start);
 
         // prepare accumulation groups for integration into GFNI triggering
         // TODO: combine this and the similar code in TopoSortDynamicData
