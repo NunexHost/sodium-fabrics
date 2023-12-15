@@ -32,10 +32,12 @@ import me.jellysquid.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.CameraMovement;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentSorting;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.data.NoData;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.data.TopoSortDynamicData;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.data.TranslucentData;
 import me.jellysquid.mods.sodium.client.render.chunk.vertex.format.ChunkMeshFormats;
 import me.jellysquid.mods.sodium.client.render.texture.SpriteUtil;
+import me.jellysquid.mods.sodium.client.render.util.RenderAsserts;
 import me.jellysquid.mods.sodium.client.render.viewport.CameraTransform;
 import me.jellysquid.mods.sodium.client.render.viewport.Viewport;
 import me.jellysquid.mods.sodium.client.util.MathUtil;
@@ -424,9 +426,11 @@ public class RenderSectionManager {
             } else {
                 // if the section is empty, doesn't exist or no sort task needs to be created
                 // for non-dynamic data, submit this null-task to set the built flag on the
-                // render section
+                // render section.
+                // It's important to use a NoData instead of null translucency data here in
+                // order for it to clear the old data from the translucency sorting system
                 var result = ChunkJobResult.successfully(new ChunkBuildOutput(
-                        section, frame, null,
+                        section, frame, new NoData(section.getPosition()),
                         BuiltSectionInfo.EMPTY, Collections.emptyMap()));
                 this.buildResults.add(result);
 
@@ -523,6 +527,8 @@ public class RenderSectionManager {
     }
 
     public void scheduleRebuild(int x, int y, int z, boolean important) {
+        RenderAsserts.validateCurrentThread();
+
         this.sectionCache.invalidate(x, y, z);
 
         RenderSection section = this.sectionByPosition.get(ChunkSectionPos.asLong(x, y, z));
