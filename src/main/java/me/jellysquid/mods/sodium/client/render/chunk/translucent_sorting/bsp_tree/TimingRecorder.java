@@ -19,6 +19,13 @@ import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
  * at 4f1fb35495b3e5adab2bbc9823cbd6cbf2e5b438
  * (with sorting compressed interval points as longs):
  * sort 15-23ns per quad avg, build 130-140ns per quad avg
+ * 
+ * at d4f220080c2bf980e8f920d4ad96e4c8be465db1
+ * (fixed child partition planes not being added to workspace on node reuse):
+ * rebuild with node reuse 120ns per quad avg,
+ * rebuild without node reuse 202ns per quad avg
+ * previously it was more like 105ns per quad avg but the child partition planes
+ * were missing (though it wasn't noticeable in many situations)
  */
 public class TimingRecorder {
     static record TimedEvent(int size, long ns) {
