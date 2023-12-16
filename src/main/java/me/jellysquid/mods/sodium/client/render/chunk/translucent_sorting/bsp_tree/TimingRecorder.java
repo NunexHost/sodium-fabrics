@@ -1,6 +1,8 @@
 package me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 
@@ -33,6 +35,13 @@ public class TimingRecorder {
 
     private static final int WARMUP_COUNT = 500;
     private static ArrayList<TimingRecorder> recorders = new ArrayList<>();
+    private static HashMap<Counter, AtomicLong> counters = new HashMap<>();
+
+    public static enum Counter {
+        UNIQUE_TRIGGERS,
+        QUADS,
+        BSP_SECTIONS
+    }
 
     private ReferenceArrayList<TimedEvent> events = new ReferenceArrayList<>(1000);
     private boolean warmedUp = false;
@@ -40,6 +49,7 @@ public class TimingRecorder {
     private final String name;
     private int remainingWarmup;
     private boolean printEvents;
+    private boolean printData;
 
     public TimingRecorder(String name, int warmupCount, boolean printEvents) {
         this.name = name;
@@ -84,7 +94,9 @@ public class TimingRecorder {
         long totalSize = 0;
 
         for (var event : this.events) {
-            builder.append(event.size).append(",").append(event.ns).append(";");
+            if (this.printData) {
+                builder.append(event.size).append(",").append(event.ns).append(";");
+            }
             totalTime += event.ns;
             minTime = Math.min(minTime, event.ns);
             maxTime = Math.max(maxTime, event.ns);
@@ -101,7 +113,10 @@ public class TimingRecorder {
                 ". Avg time per quad " + (totalTime / totalSize) +
                 "ns. Avg quads per event " + (totalSize / eventCount) +
                 ". " + eventCount + " events.");
-        // System.out.println(builder.toString());
+
+        if (this.printData) {
+            System.out.println(builder.toString());
+        }
     }
 
     private void resetAfterWarmup() {
@@ -117,9 +132,32 @@ public class TimingRecorder {
         this.events.clear();
     }
 
+    public static void incrementBy(Counter counter, long amount) {
+        getCounter(counter).addAndGet(amount);
+    }
+
+    public static AtomicLong getCounter(Counter counter) {
+        return counters.computeIfAbsent(counter, (c) -> new AtomicLong());
+    }
+
     public static void resetAll() {
         for (var recorder : recorders) {
             recorder.resetAfterWarmup();
         }
+
+        for (var key : counters.keySet()) {
+            System.out.println(key + ": " + getCounter(key).get());
+        }
+
+        if (counters.containsKey(Counter.UNIQUE_TRIGGERS)
+                && counters.containsKey(Counter.QUADS)
+                && counters.containsKey(Counter.BSP_SECTIONS)) {
+            System.out.println("Triggers per quad: " +
+                    ((double)getCounter(Counter.UNIQUE_TRIGGERS).get() / getCounter(Counter.QUADS).get()));
+            System.out.println("Triggers per section: " +
+                    (getCounter(Counter.UNIQUE_TRIGGERS).get() / getCounter(Counter.BSP_SECTIONS).get()));
+        }
+
+        counters.clear();
     }
 }

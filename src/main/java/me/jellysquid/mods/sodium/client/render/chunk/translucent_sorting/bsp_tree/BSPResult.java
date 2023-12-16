@@ -13,6 +13,7 @@ public class BSPResult extends AccGroupResult {
     Object2ReferenceOpenHashMap<Vector3fc, AccumulationGroup> unalignedDistances;
 
     BSPNode rootNode;
+    int uniqueTriggers = 0;
 
     @Override
     public Collection<AccumulationGroup> getUnalignedDistances() {
@@ -42,4 +43,7 @@ public class BSPResult extends AccGroupResult {
         return this.rootNode;
     }
 
+    public int getUniqueTriggers() {
+        return this.uniqueTriggers;
+    }
 }

@@ -44,6 +44,10 @@ class BSPWorkspace {
                     this.sectionPos, ModelQuadFacing.NORMALS[direction], direction);
             accGroups[direction] = accGroup;
         }
+        // DEBUGGING: enable trigger counting as required
+        // if (accGroup.addPlaneMember(distance)) {
+        //     this.result.uniqueTriggers++;
+        // }
         accGroup.addPlaneMember(distance);
     }
 }

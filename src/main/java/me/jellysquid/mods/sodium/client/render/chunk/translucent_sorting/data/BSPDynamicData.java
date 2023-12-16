@@ -8,6 +8,7 @@ import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPNode;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPResult;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder.Counter;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import net.minecraft.util.math.ChunkSectionPos;
 
@@ -74,6 +75,11 @@ public class BSPDynamicData extends DynamicData {
         start = System.nanoTime();
         dynamicData.sort(cameraPos);
         sortInitialRecorder.recordNow(quads.length, start);
+
+        // DEBUGGING: enable trigger counting as required
+        // TimingRecorder.incrementBy(Counter.UNIQUE_TRIGGERS, result.getUniqueTriggers());
+        TimingRecorder.incrementBy(Counter.QUADS, quads.length);
+        TimingRecorder.incrementBy(Counter.BSP_SECTIONS, 1);
 
         // prepare accumulation groups for integration into GFNI triggering
         // TODO: combine this and the similar code in TopoSortDynamicData
