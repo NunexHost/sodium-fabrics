@@ -7,6 +7,15 @@ import java.util.concurrent.atomic.AtomicLong;
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 
 /**
+ * Compression results on 1992 sections:
+ * compression candidates 55084, compression performed 1202 (ratio: 2.1%)
+ * uncompressed size 397665, compressed size 170944 (ratio: 42.9%)
+ * Removing the compresson minimum size results in a total compression ratio of
+ * 34% and a 92% success rate. This isn't much of an improvement, it seems the
+ * large candidates make up most of the compressable data. Increasing the
+ * minimum size to 16 lowers the success rate to 3.4% while the total
+ * compression ratio is 39%.
+ * 
  * test scenario: test world, 1991 events, total 538121 quads, 32 rd, 15 chunk
  * builder threads
  * 
@@ -39,8 +48,14 @@ public class TimingRecorder {
 
     public static enum Counter {
         UNIQUE_TRIGGERS,
+
         QUADS,
-        BSP_SECTIONS
+        BSP_SECTIONS,
+
+        COMPRESSION_CANDIDATES,
+        COMPRESSION_SUCCESS,
+        COMPRESSED_SIZE,
+        UNCOMPRESSED_SIZE
     }
 
     private ReferenceArrayList<TimedEvent> events = new ReferenceArrayList<>(1000);
@@ -153,9 +168,19 @@ public class TimingRecorder {
                 && counters.containsKey(Counter.QUADS)
                 && counters.containsKey(Counter.BSP_SECTIONS)) {
             System.out.println("Triggers per quad: " +
-                    ((double)getCounter(Counter.UNIQUE_TRIGGERS).get() / getCounter(Counter.QUADS).get()));
+                    ((double) getCounter(Counter.UNIQUE_TRIGGERS).get() / getCounter(Counter.QUADS).get()));
             System.out.println("Triggers per section: " +
                     (getCounter(Counter.UNIQUE_TRIGGERS).get() / getCounter(Counter.BSP_SECTIONS).get()));
+        }
+        if (counters.containsKey(Counter.COMPRESSION_CANDIDATES)
+                && counters.containsKey(Counter.COMPRESSION_SUCCESS)
+                && counters.containsKey(Counter.COMPRESSED_SIZE)
+                && counters.containsKey(Counter.UNCOMPRESSED_SIZE)) {
+            System.out.println("Compressed size ratio: " +
+                    ((double) getCounter(Counter.COMPRESSED_SIZE).get() / getCounter(Counter.UNCOMPRESSED_SIZE).get()));
+            System.out.println("Compression success ratio: " +
+                    ((double) getCounter(Counter.COMPRESSION_SUCCESS).get()
+                            / getCounter(Counter.COMPRESSION_CANDIDATES).get()));
         }
 
         counters.clear();

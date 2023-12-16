@@ -1,7 +1,6 @@
 package me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree;
 
 import java.nio.IntBuffer;
-import java.lang.Math;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntConsumer;
@@ -91,8 +90,12 @@ class BSPSortState {
      * 6x5b, 8x4b, 10x3b, 16x2b, 32x1b
      */
     static int[] compressIndexes(IntArrayList indexes, boolean doSort) {
+        // TimingRecorder.incrementBy(Counter.COMPRESSION_CANDIDATES, 1);
+        // TimingRecorder.incrementBy(Counter.UNCOMPRESSED_SIZE, indexes.size());
+
         // bail on short lists
         if (indexes.size() < INDEX_COMPRESSION_MIN_LENGTH || indexes.size() > 1 << 10) {
+            // TimingRecorder.incrementBy(Counter.COMPRESSED_SIZE, indexes.size());
             return indexes.toIntArray();
         }
 
@@ -125,6 +128,7 @@ class BSPSortState {
         // stop if the first index is too large
         int firstIndex = workingList.getInt(0);
         if (firstIndex > 1 << 17) {
+            // TimingRecorder.incrementBy(Counter.COMPRESSED_SIZE, indexes.size());
             return indexes.toIntArray();
         }
 
@@ -140,13 +144,17 @@ class BSPSortState {
             compressed[1] = minDelta;
 
             // System.out.println(
-            //         "Densely compressed " + indexes.size() + " indexes to 2 ints, compression ratio " +
-            //                 (indexes.size() / 2));
+            // "Densely compressed " + indexes.size() + " indexes to 2 ints, compression
+            // ratio " +
+            // (indexes.size() / 2));
+            // TimingRecorder.incrementBy(Counter.COMPRESSION_SUCCESS, 1);
+            // TimingRecorder.incrementBy(Counter.COMPRESSED_SIZE, 2);
             return compressed;
         }
 
         // stop if the width is too large (and compression would make no sense)
         if (deltaRangeWidth > 16) {
+            // TimingRecorder.incrementBy(Counter.COMPRESSED_SIZE, indexes.size());
             return indexes.toIntArray();
         }
 
@@ -187,8 +195,11 @@ class BSPSortState {
             compressed[outputIndex++] = gatherInt;
         }
 
-        // System.out.println("Compressed " + indexes.size() + " indexes to " + size + " ints, compression ratio "
-        //         + (indexes.size() / size));
+        // System.out.println("Compressed " + indexes.size() + " indexes to " + size + "
+        // ints, compression ratio "
+        // + (indexes.size() / size));
+        // TimingRecorder.incrementBy(Counter.COMPRESSION_SUCCESS, 1);
+        // TimingRecorder.incrementBy(Counter.COMPRESSED_SIZE, size);
         return compressed;
     }
 
