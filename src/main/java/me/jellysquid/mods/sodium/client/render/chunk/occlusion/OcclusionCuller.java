@@ -2,6 +2,7 @@ package me.jellysquid.mods.sodium.client.render.chunk.occlusion;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentSorting;
 import me.jellysquid.mods.sodium.client.render.viewport.CameraTransform;
 import me.jellysquid.mods.sodium.client.util.collections.DoubleBufferedQueue;
 import me.jellysquid.mods.sodium.client.util.collections.ReadQueue;
@@ -36,6 +37,9 @@ public class OcclusionCuller {
 
         this.init(visitor, queues.write(), viewport, searchDistance, useOcclusionCulling, frame);
 
+        if (TranslucentSorting.DEBUG_ONLY_RENDER_CURRENT_SECTION) {
+            return;
+        }
         while (queues.flip()) {
             processQueue(visitor, viewport, searchDistance, useOcclusionCulling, frame, queues.read(), queues.write());
         }
@@ -56,7 +60,7 @@ public class OcclusionCuller {
                 continue;
             }
 
-            if (isOutsideFrustum(viewport, section)) {
+            if (isOutsideFrustum(viewport, section) && !TranslucentSorting.DEBUG_DISABLE_FRUSTUM_CULLING) {
                 continue;
             }
 

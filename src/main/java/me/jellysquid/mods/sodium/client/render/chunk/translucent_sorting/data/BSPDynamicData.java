@@ -5,6 +5,7 @@ import org.joml.Vector3fc;
 import me.jellysquid.mods.sodium.client.gl.util.VertexRange;
 import me.jellysquid.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentSorting;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPNode;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPResult;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder;
@@ -13,6 +14,12 @@ import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import net.minecraft.util.math.ChunkSectionPos;
 
 public class BSPDynamicData extends DynamicData {
+    // /tp ~ ~-100 ~
+    public static final TimingRecorder sortInitialRecorder = new TimingRecorder("BSP sort initial");
+    public static final TimingRecorder sortTriggerRecorder = new TimingRecorder("BSP sort trigger");
+    public static final TimingRecorder buildRecorder = new TimingRecorder("BSP build");
+    public static final TimingRecorder partialUpdateRecorder = new TimingRecorder("BSP partial update", 10, true);
+
     private static final int NODE_REUSE_MIN_GENERATION = 1;
 
     private final BSPNode rootNode;
@@ -31,12 +38,6 @@ public class BSPDynamicData extends DynamicData {
         this.sort(cameraPos);
         sortTriggerRecorder.recordNow(this.getLength(), start);
     }
-
-    // /tp ~ ~-100 ~
-    public static final TimingRecorder sortInitialRecorder = new TimingRecorder("BSP sort initial");
-    public static final TimingRecorder sortTriggerRecorder = new TimingRecorder("BSP sort trigger");
-    public static final TimingRecorder buildRecorder = new TimingRecorder("BSP build");
-    public static final TimingRecorder partialUpdateRecorder = new TimingRecorder("BSP partial update", 10, true);
 
     private void sort(Vector3fc cameraPos) {
         this.unsetReuseUploadedData();
@@ -76,8 +77,9 @@ public class BSPDynamicData extends DynamicData {
         dynamicData.sort(cameraPos);
         sortInitialRecorder.recordNow(quads.length, start);
 
-        // DEBUGGING: enable trigger counting as required
-        // TimingRecorder.incrementBy(Counter.UNIQUE_TRIGGERS, result.getUniqueTriggers());
+        if (TranslucentSorting.DEBUG_TRIGGER_STATS) {
+            TimingRecorder.incrementBy(Counter.UNIQUE_TRIGGERS, result.getUniqueTriggers());
+        }
         TimingRecorder.incrementBy(Counter.QUADS, quads.length);
         TimingRecorder.incrementBy(Counter.BSP_SECTIONS, 1);
 

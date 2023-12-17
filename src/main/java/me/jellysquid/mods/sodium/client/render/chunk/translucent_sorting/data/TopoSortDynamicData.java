@@ -10,14 +10,19 @@ import me.jellysquid.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TopoGraphSorting;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentGeometryCollector;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentSorting;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import me.jellysquid.mods.sodium.client.util.sorting.MergeSort;
 import net.minecraft.util.math.ChunkSectionPos;
 
 public class TopoSortDynamicData extends DynamicData {
+    public static final TimingRecorder topoSortRecorder = new TimingRecorder("Topo sort");
+    public static final TimingRecorder distanceSortRecorder = new TimingRecorder("Distance sort");
+
     private final TQuad[] quads;
-    private boolean GFNITrigger = true;
-    private boolean directTrigger = false;
+    private boolean GFNITrigger = !TranslucentSorting.DEBUG_SKIP_TOPO_SORT;
+    private boolean directTrigger = TranslucentSorting.DEBUG_SKIP_TOPO_SORT;
     private boolean turnGFNITriggerOff = false;
     private boolean turnDirectTriggerOn = false;
     private boolean turnDirectTriggerOff = false;
@@ -134,8 +139,10 @@ public class TopoSortDynamicData extends DynamicData {
         if (this.GFNITrigger && !isAngleTrigger) {
             var sortStart = initial ? 0 : System.nanoTime();
 
+            var start = System.nanoTime();
             var result = TopoGraphSorting.topoSortDepthFirstCyclic(
                     indexBuffer, this.quads, this.distancesByNormal, cameraPos);
+            topoSortRecorder.recordNow(this.quads.length, start);
 
             var sortTime = initial ? 0 : System.nanoTime() - sortStart;
 

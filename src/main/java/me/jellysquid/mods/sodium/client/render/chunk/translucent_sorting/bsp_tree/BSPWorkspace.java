@@ -3,6 +3,7 @@ package me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tr
 import me.jellysquid.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.AccumulationGroup;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentSorting;
 import net.minecraft.util.math.ChunkSectionPos;
 
 /**
@@ -44,10 +45,12 @@ class BSPWorkspace {
                     this.sectionPos, ModelQuadFacing.NORMALS[direction], direction);
             accGroups[direction] = accGroup;
         }
-        // DEBUGGING: enable trigger counting as required
-        // if (accGroup.addPlaneMember(distance)) {
-        //     this.result.uniqueTriggers++;
-        // }
-        accGroup.addPlaneMember(distance);
+        if (TranslucentSorting.DEBUG_TRIGGER_STATS) {
+            if (accGroup.addPlaneMember(distance)) {
+                this.result.uniqueTriggers++;
+            }
+        } else {
+            accGroup.addPlaneMember(distance);
+        }
     }
 }

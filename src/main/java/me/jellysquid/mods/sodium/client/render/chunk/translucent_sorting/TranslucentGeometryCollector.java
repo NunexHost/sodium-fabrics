@@ -426,11 +426,15 @@ public class TranslucentGeometryCollector extends AccGroupResult {
         }
 
         if (this.sortType == SortType.DYNAMIC_ALL) {
-            try {
-                return BSPDynamicData.fromMesh(translucentMesh, cameraPos, quads, sectionPos, buffer, oldData);
-            } catch (BSPBuildFailureException e) {
-                // TODO: investigate existing BSP build failures, then remove this logging
-                System.out.println("BSP build failure: " + sectionPos);
+            if (!TranslucentSorting.DEBUG_ONLY_TOPO_OR_DISTANCE_SORT) {
+                try {
+                    return BSPDynamicData.fromMesh(translucentMesh, cameraPos, quads, sectionPos, buffer, oldData);
+                } catch (BSPBuildFailureException e) {
+                    // TODO: investigate existing BSP build failures, then remove this logging
+                    System.out.println("BSP build failure: " + sectionPos);
+                    return TopoSortDynamicData.fromMesh(translucentMesh, cameraPos, quads, sectionPos, this, buffer);
+                }
+            } else {
                 return TopoSortDynamicData.fromMesh(translucentMesh, cameraPos, quads, sectionPos, this, buffer);
             }
         }

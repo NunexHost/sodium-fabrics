@@ -74,8 +74,12 @@ public class TimingRecorder {
         recorders.add(this);
     }
 
+    public TimingRecorder(String name, int warmupCount) {
+        this(name, warmupCount, false);
+    }
+
     public TimingRecorder(String name) {
-        this(name, WARMUP_COUNT, false);
+        this(name, WARMUP_COUNT);
     }
 
     public void recordNow(int size, long startNanos) {
