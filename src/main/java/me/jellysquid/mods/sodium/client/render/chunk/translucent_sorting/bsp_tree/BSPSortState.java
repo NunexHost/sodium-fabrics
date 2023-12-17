@@ -58,15 +58,22 @@ class BSPSortState {
         }
     }
 
-    private static final int INDEX_COMPRESSION_MIN_LENGTH = 50;
+    /**
+     * The minimum size of an index array that will be compressed. This value is
+     * non-zero to avoid wasting work on compressing arrays that won't benefit from
+     * it and the overhead in setting up the compression. Empirically, the
+     * compression ratio is only high for the very largest arrays and largely
+     * useless for smaller ones.
+     */
+    private static final int INDEX_COMPRESSION_MIN_LENGTH = 32;
+
     private static final int HEADER_LENGTH = 2;
-
     private static final int[] WIDTHS = new int[] { 1, 2, 3, 4, 5, 6, 8, 10, 16, 32 };
-
     private static final int CONSTANT_DELTA_WIDTH_INDEX = 15;
 
     /**
-     * ceilDiv was introduced to the JDK in Java 18 but is not available in Java 17.
+     * ceilDiv was introduced to the JDK in Java 18 but is not available in the here
+     * used Java 17.
      */
     private static int ceilDiv(int x, int y) {
         return -Math.floorDiv(-x, y);

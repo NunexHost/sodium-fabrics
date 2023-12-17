@@ -161,10 +161,6 @@ public class TranslucentGeometryCollector extends AccGroupResult {
         // POS_X, POS_Y, POS_Z, NEG_X, NEG_Y, NEG_Z
         float[] extents = new float[] { posXExtent, posYExtent, posZExtent, negXExtent, negYExtent, negZExtent };
 
-        // TODO: does it make a difference if we compute the center as the average of
-        // the unique vertices or as the center of the extents? (the latter would be
-        // less work)
-
         // TODO: some of these things should probably only be computed on demand, and an
         // allocation of a Quad object should be avoided
         AccumulationGroup accGroup;
@@ -413,7 +409,6 @@ public class TranslucentGeometryCollector extends AccGroupResult {
 
         // from this point on we know the estimated sort type requires direction mixing
         // (no backface culling) and all vertices are in the UNASSIGNED direction.
-        // TODO: don't attempt static topo sorting if BSP sorting works well.
         NativeBuffer buffer = PresentTranslucentData.nativeBufferForQuads(this.quads);
         if (this.sortType == SortType.STATIC_TOPO_ACYCLIC) {
             var result = StaticTopoAcyclicData.fromMesh(translucentMesh, this.quads, sectionPos, buffer);
@@ -434,6 +429,7 @@ public class TranslucentGeometryCollector extends AccGroupResult {
             try {
                 return BSPDynamicData.fromMesh(translucentMesh, cameraPos, quads, sectionPos, buffer, oldData);
             } catch (BSPBuildFailureException e) {
+                // TODO: investigate existing BSP build failures, then remove this logging
                 System.out.println("BSP build failure: " + sectionPos);
                 return TopoSortDynamicData.fromMesh(translucentMesh, cameraPos, quads, sectionPos, this, buffer);
             }
