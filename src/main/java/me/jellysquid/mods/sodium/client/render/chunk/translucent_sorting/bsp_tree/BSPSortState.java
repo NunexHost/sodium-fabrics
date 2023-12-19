@@ -100,7 +100,7 @@ class BSPSortState {
      */
     static int[] compressIndexes(IntArrayList indexes, boolean doSort) {
         if (TranslucentSorting.DEBUG_COMPRESSION_STATS) {
-            TimingRecorder.incrementBy(Counter.COMPRESSION_CANDIDATES, 1);
+            Counter.COMPRESSION_CANDIDATES.increment();
             TimingRecorder.incrementBy(Counter.UNCOMPRESSED_SIZE, indexes.size());
         }
 
@@ -159,8 +159,8 @@ class BSPSortState {
             compressed[1] = minDelta;
 
             if (TranslucentSorting.DEBUG_COMPRESSION_STATS) {
-                TimingRecorder.incrementBy(Counter.COMPRESSION_SUCCESS, 1);
-                TimingRecorder.incrementBy(Counter.COMPRESSED_SIZE, 2);
+                Counter.COMPRESSION_SUCCESS.increment();
+                Counter.COMPRESSED_SIZE.incrementBy(2);
             }
             return compressed;
         }
@@ -211,7 +211,7 @@ class BSPSortState {
         }
 
         if (TranslucentSorting.DEBUG_COMPRESSION_STATS) {
-            TimingRecorder.incrementBy(Counter.COMPRESSION_SUCCESS, 1);
+            Counter.COMPRESSION_SUCCESS.increment();
             TimingRecorder.incrementBy(Counter.COMPRESSED_SIZE, size);
         }
         return compressed;

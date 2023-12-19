@@ -1,5 +1,8 @@
 package me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting;
 
+import java.util.Arrays;
+import java.util.Collection;
+
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
@@ -12,6 +15,7 @@ import me.jellysquid.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.pipeline.FluidRenderer;
 import me.jellysquid.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPBuildFailureException;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder.Counter;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.data.AnyOrderData;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.data.BSPDynamicData;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.data.NoData;
@@ -23,8 +27,6 @@ import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.data.Tr
 import me.jellysquid.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import net.minecraft.util.math.ChunkSectionPos;
-import java.util.Arrays;
-import java.util.Collection;
 
 /**
  * The translucent geometry collector collects the data from the renderers and
@@ -334,6 +336,7 @@ public class TranslucentGeometryCollector extends AccGroupResult {
                     }
                 }
                 if (passesBoundingBoxTest) {
+                    Counter.HEURISTIC_BOUNDING_BOX.increment();
                     return SortType.NONE;
                 }
             }
@@ -357,6 +360,7 @@ public class TranslucentGeometryCollector extends AccGroupResult {
                 if (normalA.x() == -normalB.x()
                         && normalA.y() == -normalB.y()
                         && normalA.z() == -normalB.z()) {
+                    Counter.HEURISTIC_OPPOSING_UNALIGNED.increment();
                     return SortType.STATIC_NORMAL_RELATIVE;
                 }
             }

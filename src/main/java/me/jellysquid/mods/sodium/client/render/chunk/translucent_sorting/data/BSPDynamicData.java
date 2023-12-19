@@ -81,7 +81,7 @@ public class BSPDynamicData extends DynamicData {
             TimingRecorder.incrementBy(Counter.UNIQUE_TRIGGERS, result.getUniqueTriggers());
         }
         TimingRecorder.incrementBy(Counter.QUADS, quads.length);
-        TimingRecorder.incrementBy(Counter.BSP_SECTIONS, 1);
+        Counter.BSP_SECTIONS.increment();
 
         // prepare accumulation groups for integration into GFNI triggering
         var aligned = result.getAlignedDistances();

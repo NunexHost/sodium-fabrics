@@ -1,7 +1,6 @@
 package me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
@@ -37,14 +36,17 @@ import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
  * rebuild without node reuse 202ns per quad avg
  * previously it was more like 105ns per quad avg but the child partition planes
  * were missing (though it wasn't noticeable in many situations)
+ * 
+ * typical heuristic values for hermitcraft 7 world:
+ * HEURISTIC_BOUNDING_BOX: 21
+ * HEURISTIC_OPPOSING_UNALIGNED: 17
+ * HEURISTIC_BSP_OPPOSING_UNALIGNED: 14194
+ * This happens because fluid render products quads that have an aligned normal
+ * but don't have an aligned facing because they're just slightly slanted.
  */
 public class TimingRecorder {
     static record TimedEvent(int size, long ns) {
     }
-
-    private static final int WARMUP_COUNT = 500;
-    private static ArrayList<TimingRecorder> recorders = new ArrayList<>();
-    private static HashMap<Counter, AtomicLong> counters = new HashMap<>();
 
     public static enum Counter {
         UNIQUE_TRIGGERS,
@@ -55,8 +57,39 @@ public class TimingRecorder {
         COMPRESSION_CANDIDATES,
         COMPRESSION_SUCCESS,
         COMPRESSED_SIZE,
-        UNCOMPRESSED_SIZE
+        UNCOMPRESSED_SIZE,
+
+        HEURISTIC_BOUNDING_BOX,
+        HEURISTIC_OPPOSING_UNALIGNED,
+        HEURISTIC_BSP_OPPOSING_UNALIGNED;
+
+        private final AtomicLong value = new AtomicLong();
+
+        public long getValue() {
+            return this.value.get();
+        }
+
+        public void incrementBy(long amount) {
+            this.value.addAndGet(amount);
+        }
+
+        public void increment() {
+            this.incrementBy(1);
+        }
+
+        public boolean isPositive() {
+            return this.getValue() > 0;
+        }
+
+        public static void resetAll() {
+            for (var counter : values()) {
+                counter.value.set(0);
+            }
+        }
     }
+
+    private static final int WARMUP_COUNT = 500;
+    private static ArrayList<TimingRecorder> recorders = new ArrayList<>();
 
     private ReferenceArrayList<TimedEvent> events = new ReferenceArrayList<>(1000);
     private boolean warmedUp = false;
@@ -152,11 +185,7 @@ public class TimingRecorder {
     }
 
     public static void incrementBy(Counter counter, long amount) {
-        getCounter(counter).addAndGet(amount);
-    }
-
-    public static AtomicLong getCounter(Counter counter) {
-        return counters.computeIfAbsent(counter, (c) -> new AtomicLong());
+        counter.incrementBy(amount);
     }
 
     public static void resetAll() {
@@ -164,29 +193,29 @@ public class TimingRecorder {
             recorder.resetAfterWarmup();
         }
 
-        for (var key : counters.keySet()) {
-            System.out.println(key + ": " + getCounter(key).get());
+        for (var counter : Counter.values()) {
+            System.out.println(counter + ": " + counter.getValue());
         }
 
-        if (counters.containsKey(Counter.UNIQUE_TRIGGERS)
-                && counters.containsKey(Counter.QUADS)
-                && counters.containsKey(Counter.BSP_SECTIONS)) {
+        if (Counter.UNIQUE_TRIGGERS.isPositive()
+                && Counter.QUADS.isPositive()
+                && Counter.BSP_SECTIONS.isPositive()) {
             System.out.println("Triggers per quad: " +
-                    ((double) getCounter(Counter.UNIQUE_TRIGGERS).get() / getCounter(Counter.QUADS).get()));
+                    ((double) Counter.UNIQUE_TRIGGERS.getValue() / Counter.QUADS.getValue()));
             System.out.println("Triggers per section: " +
-                    (getCounter(Counter.UNIQUE_TRIGGERS).get() / getCounter(Counter.BSP_SECTIONS).get()));
+                    (Counter.UNIQUE_TRIGGERS.getValue() / Counter.BSP_SECTIONS.getValue()));
         }
-        if (counters.containsKey(Counter.COMPRESSION_CANDIDATES)
-                && counters.containsKey(Counter.COMPRESSION_SUCCESS)
-                && counters.containsKey(Counter.COMPRESSED_SIZE)
-                && counters.containsKey(Counter.UNCOMPRESSED_SIZE)) {
+        if (Counter.COMPRESSION_CANDIDATES.isPositive()
+                && Counter.COMPRESSION_SUCCESS.isPositive()
+                && Counter.COMPRESSED_SIZE.isPositive()
+                && Counter.UNCOMPRESSED_SIZE.isPositive()) {
             System.out.println("Compressed size ratio: " +
-                    ((double) getCounter(Counter.COMPRESSED_SIZE).get() / getCounter(Counter.UNCOMPRESSED_SIZE).get()));
+                    ((double) Counter.COMPRESSED_SIZE.getValue() / Counter.UNCOMPRESSED_SIZE.getValue()));
             System.out.println("Compression success ratio: " +
-                    ((double) getCounter(Counter.COMPRESSION_SUCCESS).get()
-                            / getCounter(Counter.COMPRESSION_CANDIDATES).get()));
+                    ((double) Counter.COMPRESSION_SUCCESS.getValue()
+                            / Counter.COMPRESSION_CANDIDATES.getValue()));
         }
 
-        counters.clear();
+        Counter.resetAll();
     }
 }

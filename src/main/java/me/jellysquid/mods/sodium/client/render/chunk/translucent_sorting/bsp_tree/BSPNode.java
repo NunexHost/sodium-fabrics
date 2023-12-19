@@ -6,6 +6,7 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import me.jellysquid.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TopoGraphSorting;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder.Counter;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import net.minecraft.util.math.ChunkSectionPos;
 
@@ -72,20 +73,26 @@ public abstract class BSPNode {
             var facingB = quadB.facing();
             var normalA = quadA.normal();
             var normalB = quadB.normal();
-            if (
+
             // coplanar quads
-            ((facingA == ModelQuadFacing.UNASSIGNED || facingB == ModelQuadFacing.UNASSIGNED)
-                    ? // opposite normal (distance irrelevant)
-                    normalA.x() == -normalB.x()
-                            && normalA.y() == -normalB.y()
-                            && normalA.z() == -normalB.z()
-                            // same normal and same distance
-                            || normalA.equals(quadB.normal())
-                                    && normalA.dot(quadA.center()) == quadB.normal().dot(quadB.center())
-                    // aligned same distance
-                    : quadA.extents()[facingA.ordinal()] == quadB.extents()[facingB.ordinal()])
-                    // facing away from eachother
-                    || facingA == facingB.getOpposite()
+            if (facingA == ModelQuadFacing.UNASSIGNED || facingB == ModelQuadFacing.UNASSIGNED) {
+                // opposite normal (distance irrelevant)
+                if (normalA.x() == -normalB.x()
+                        && normalA.y() == -normalB.y()
+                        && normalA.z() == -normalB.z()
+                        // same normal and same distance
+                        || normalA.equals(quadB.normal())
+                                && normalA.dot(quadA.center()) == quadB.normal().dot(quadB.center())) {
+                    Counter.HEURISTIC_BSP_OPPOSING_UNALIGNED.increment();
+                    return new LeafDoubleBSPNode(quadIndexA, quadIndexB);
+                }
+            }
+            // aligned same distance
+            else if (quadA.extents()[facingA.ordinal()] == quadB.extents()[facingB.ordinal()]) {
+                return new LeafDoubleBSPNode(quadIndexA, quadIndexB);
+            }
+
+            if (facingA == facingB.getOpposite()
                     // otherwise mutually invisible
                     || facingA != ModelQuadFacing.UNASSIGNED
                             && facingB != ModelQuadFacing.UNASSIGNED

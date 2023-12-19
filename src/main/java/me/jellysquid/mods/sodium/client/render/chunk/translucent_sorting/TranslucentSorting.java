@@ -24,8 +24,8 @@ import net.minecraft.util.math.ChunkSectionPos;
  * @author douira (the translucent_sorting package)
  */
 public class TranslucentSorting {
-    public static boolean DEBUG_ONLY_TOPO_OR_DISTANCE_SORT = true;
-    public static boolean DEBUG_SKIP_TOPO_SORT = true;
+    public static boolean DEBUG_ONLY_TOPO_OR_DISTANCE_SORT = false;
+    public static boolean DEBUG_SKIP_TOPO_SORT = false;
     public static boolean DEBUG_COMPRESSION_STATS = false;
     public static boolean DEBUG_TRIGGER_STATS = false;
     public static boolean DEBUG_DISABLE_FRUSTUM_CULLING = false;
