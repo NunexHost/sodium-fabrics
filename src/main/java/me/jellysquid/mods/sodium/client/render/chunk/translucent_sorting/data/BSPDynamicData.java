@@ -5,11 +5,11 @@ import org.joml.Vector3fc;
 import me.jellysquid.mods.sodium.client.gl.util.VertexRange;
 import me.jellysquid.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
-import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentSorting;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPNode;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.BSPResult;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder.Counter;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.trigger.TranslucentSorting;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import net.minecraft.util.math.ChunkSectionPos;
 
@@ -67,6 +67,7 @@ public class BSPDynamicData extends DynamicData {
         } else {
             partialUpdateRecorder.recordNow(quads.length, start);
         }
+        Counter.UNIQUE_TRIGGERS.incrementBy(result.countUniqueTriggers());
 
         VertexRange range = TranslucentData.getUnassignedVertexRange(translucentMesh);
         buffer = PresentTranslucentData.nativeBufferForQuads(buffer, quads);
@@ -83,23 +84,8 @@ public class BSPDynamicData extends DynamicData {
         TimingRecorder.incrementBy(Counter.QUADS, quads.length);
         Counter.BSP_SECTIONS.increment();
 
-        // prepare accumulation groups for integration into GFNI triggering
-        var aligned = result.getAlignedDistances();
-        if (aligned != null) {
-            for (var accGroup : aligned) {
-                if (accGroup != null) {
-                    accGroup.prepareIntegration();
-                }
-            }
-        }
-        var unaligned = result.getUnalignedDistances();
-        if (unaligned != null) {
-            for (var accGroup : unaligned) {
-                if (accGroup != null) {
-                    accGroup.prepareIntegration();
-                }
-            }
-        }
+        // prepare geometry planes for integration into GFNI triggering
+        result.prepareIntegration();
 
         return dynamicData;
     }

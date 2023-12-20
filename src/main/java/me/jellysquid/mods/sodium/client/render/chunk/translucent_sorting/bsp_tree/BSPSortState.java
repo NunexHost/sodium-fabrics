@@ -4,7 +4,7 @@ import java.nio.IntBuffer;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntConsumer;
-import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentSorting;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.trigger.TranslucentSorting;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree.TimingRecorder.Counter;
 import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.data.TranslucentData;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;

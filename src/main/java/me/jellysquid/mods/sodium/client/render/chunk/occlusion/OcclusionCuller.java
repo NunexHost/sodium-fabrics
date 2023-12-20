@@ -2,7 +2,7 @@ package me.jellysquid.mods.sodium.client.render.chunk.occlusion;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
-import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.TranslucentSorting;
+import me.jellysquid.mods.sodium.client.render.chunk.translucent_sorting.trigger.TranslucentSorting;
 import me.jellysquid.mods.sodium.client.render.viewport.CameraTransform;
 import me.jellysquid.mods.sodium.client.util.collections.DoubleBufferedQueue;
 import me.jellysquid.mods.sodium.client.util.collections.ReadQueue;
