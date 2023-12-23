@@ -1,27 +1,46 @@
 package me.jellysquid.mods.sodium.client.render.chunk.shader;
 
 import com.google.common.collect.ImmutableList;
-
 import java.util.List;
 import java.util.function.Function;
 
 public enum ChunkFogMode {
-    NONE(ChunkShaderFogComponent.None::new, ImmutableList.of()),
-    SMOOTH(ChunkShaderFogComponent.Smooth::new, ImmutableList.of("USE_FOG", "USE_FOG_SMOOTH"));
+    NONE {
+        @Override
+        public List<String> getDefines() {
+            return ImmutableList.of();
+        }
+    },
+
+    SMOOTH {
+        @Override
+        public List<String> getDefines() {
+            return ImmutableList.of("USE_FOG", "USE_FOG_SMOOTH");
+        }
+    };
+
+    private static final List<String> NONE_DEFINES = ImmutableList.of();
 
     private final Function<ShaderBindingContext, ChunkShaderFogComponent> factory;
-    private final List<String> defines;
 
-    ChunkFogMode(Function<ShaderBindingContext, ChunkShaderFogComponent> factory, List<String> defines) {
+    ChunkFogMode(Function<ShaderBindingContext, ChunkShaderFogComponent> factory) {
         this.factory = factory;
-        this.defines = defines;
     }
 
     public Function<ShaderBindingContext, ChunkShaderFogComponent> getFactory() {
         return this.factory;
     }
 
-    public List<String> getDefines() {
-        return this.defines;
+    public static ChunkFogMode fromDefines(List<String> defines) {
+        if (defines.contains("USE_FOG")) {
+            if (defines.contains("USE_FOG_SMOOTH")) {
+                return SMOOTH;
+            } else {
+                return NONE;
+            }
+        } else {
+            return NONE;
+        }
     }
 }
+
