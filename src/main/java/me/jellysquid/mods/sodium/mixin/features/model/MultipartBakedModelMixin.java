@@ -11,6 +11,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Map;
 import java.util.List;
 import java.util.concurrent.locks.StampedLock;
