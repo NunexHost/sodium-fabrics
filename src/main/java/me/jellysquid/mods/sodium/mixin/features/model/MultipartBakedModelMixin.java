@@ -66,7 +66,7 @@ public class MultipartBakedModelMixin {
 
                 for (Pair<Predicate<BlockState>, BakedModel> pair : this.components) {
                     if (pair.getLeft().test(state)) {
-                        if (pair.getRight().isFaceVisible(face)) {
+                        if (pair.getRight().isFacePresent(face)) {
                             modelList.add(pair.getRight());
                         }
                     }
