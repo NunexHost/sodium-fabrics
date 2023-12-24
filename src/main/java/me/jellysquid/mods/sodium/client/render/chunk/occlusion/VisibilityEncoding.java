@@ -36,8 +36,7 @@ public class VisibilityEncoding {
     }
 
     private static long createMask(int incoming) {
-        var expanded = (0b0000001_0000001_0000001_0000001_0000001_0000001L * Integer.toUnsignedLong(incoming));
-        return (expanded & 0b00000001_00000001_00000001_00000001_00000001_00000001L) * 0xFF;
+        return (0b0000001_0000001_0000001_0000001_0000001_0000001L * Integer.toUnsignedLong(incoming));
     }
 
     private static int foldOutgoingDirections(long data) {
@@ -47,5 +46,26 @@ public class VisibilityEncoding {
         folded |= folded >> 8; // fold top 8 bits onto bottom 8 bits
 
         return (int) (folded & GraphDirectionSet.ALL);
+    }
+
+    public static long encodeOptimized(ChunkOcclusionData occlusionData) {
+        long visibilityData = 0;
+
+        for (int from = 0; from < GraphDirection.COUNT; from++) {
+            int outgoingMask = 0;
+            for (int to = 0; to < GraphDirection.COUNT; to++) {
+                if (occlusionData.isVisibleThrough(GraphDirection.toEnum(from), GraphDirection.toEnum(to))) {
+                    outgoingMask |= 1 << to;
+                }
+            }
+
+            visibilityData |= outgoingMask << (from * 8);
+        }
+
+        return visibilityData;
+    }
+
+    public static int getConnectionsOptimized(long visibilityData, int incoming) {
+        return (int) (visibilityData >> (incoming * 8) & GraphDirectionSet.ALL);
     }
 }
