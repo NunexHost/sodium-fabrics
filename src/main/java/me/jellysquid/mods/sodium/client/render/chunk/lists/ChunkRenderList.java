@@ -47,7 +47,6 @@ public class ChunkRenderList {
         int index = render.getSectionIndex();
         int flags = render.getFlags();
 
-        // Optimized: Use bitwise OR to set the corresponding bit in the sections array.
         this.sectionsWithGeometry[index >> 3] |= (1 << (index & 7));
         this.sectionsWithSprites[index >> 3] |= (1 << (index & 7));
         this.sectionsWithEntities[index >> 3] |= (1 << (index & 7));
@@ -58,10 +57,8 @@ public class ChunkRenderList {
             return null;
         }
 
-        // Optimized: Use a bitmask to quickly find the first section with geometry.
         int firstIndex = findFirstSetBit(this.sectionsWithGeometry);
 
-        // Optimized: Use the bitmask to quickly iterate over the sections with geometry.
         return new ReversibleByteArrayIterator(this.sectionsWithGeometry, firstIndex, reverse);
     }
 
@@ -70,10 +67,8 @@ public class ChunkRenderList {
             return null;
         }
 
-        // Optimized: Use a bitmask to quickly find the first section with sprites.
         int firstIndex = findFirstSetBit(this.sectionsWithSprites);
 
-        // Optimized: Use the bitmask to quickly iterate over the sections with sprites.
         return new ByteArrayIterator(this.sectionsWithSprites, firstIndex);
     }
 
@@ -82,10 +77,8 @@ public class ChunkRenderList {
             return null;
         }
 
-        // Optimized: Use a bitmask to quickly find the first section with entities.
         int firstIndex = findFirstSetBit(this.sectionsWithEntities);
 
-        // Optimized: Use the bitmask to quickly iterate over the sections with entities.
         return new ByteArrayIterator(this.sectionsWithEntities, firstIndex);
     }
 
@@ -96,6 +89,22 @@ public class ChunkRenderList {
         }
 
         return index;
+    }
+
+    public RenderRegion getRegion() {
+        return this.region;
+    }
+
+    public int getSectionsWithGeometryCount() {
+        return this.sectionsWithGeometryCount;
+    }
+
+    public int getLastVisibleFrame() {
+        return this.lastVisibleFrame;
+    }
+
+    public int size() {
+        return this.size;
     }
 }
 
