@@ -5,42 +5,23 @@ import java.util.List;
 import java.util.function.Function;
 
 public enum ChunkFogMode {
-    NONE {
-        @Override
-        public List<String> getDefines() {
-            return ImmutableList.of();
-        }
-    },
-
-    SMOOTH {
-        @Override
-        public List<String> getDefines() {
-            return ImmutableList.of("USE_FOG", "USE_FOG_SMOOTH");
-        }
-    };
-
-    private static final List<String> NONE_DEFINES = ImmutableList.of();
+    NONE(ChunkShaderFogComponent.None::new, ImmutableList.of()),
+    SMOOTH(ChunkShaderFogComponent.Smooth::new, ImmutableList.of("USE_FOG", "USE_FOG_SMOOTH"));
 
     private final Function<ShaderBindingContext, ChunkShaderFogComponent> factory;
+    private final List<String> defines;
 
-    ChunkFogMode(Function<ShaderBindingContext, ChunkShaderFogComponent> factory) {
+    ChunkFogMode(Function<ShaderBindingContext, ChunkShaderFogComponent> factory, List<String> defines) {
         this.factory = factory;
+        this.defines = defines;
     }
 
     public Function<ShaderBindingContext, ChunkShaderFogComponent> getFactory() {
         return this.factory;
     }
 
-    public static ChunkFogMode fromDefines(List<String> defines) {
-        if (defines.contains("USE_FOG")) {
-            if (defines.contains("USE_FOG_SMOOTH")) {
-                return SMOOTH;
-            } else {
-                return NONE;
-            }
-        } else {
-            return NONE;
-        }
+    public List<String> getDefines() {
+        return this.defines;
     }
 }
 
