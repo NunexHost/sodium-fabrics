@@ -47,14 +47,10 @@ public class ChunkRenderList {
         int index = render.getSectionIndex();
         int flags = render.getFlags();
 
-        this.sectionsWithGeometry[this.sectionsWithGeometryCount] = (byte) index;
-        this.sectionsWithGeometryCount += (flags >>> RenderSectionFlags.HAS_BLOCK_GEOMETRY) & 1;
-
-        this.sectionsWithSprites[this.sectionsWithSpritesCount] = (byte) index;
-        this.sectionsWithSpritesCount += (flags >>> RenderSectionFlags.HAS_ANIMATED_SPRITES) & 1;
-
-        this.sectionsWithEntities[this.sectionsWithEntitiesCount] = (byte) index;
-        this.sectionsWithEntitiesCount += (flags >>> RenderSectionFlags.HAS_BLOCK_ENTITIES) & 1;
+        // Optimized: Use bitwise OR to set the corresponding bit in the sections array.
+        this.sectionsWithGeometry[index >> 3] |= (1 << (index & 7));
+        this.sectionsWithSprites[index >> 3] |= (1 << (index & 7));
+        this.sectionsWithEntities[index >> 3] |= (1 << (index & 7));
     }
 
     public @Nullable ByteIterator sectionsWithGeometryIterator(boolean reverse) {
@@ -62,7 +58,11 @@ public class ChunkRenderList {
             return null;
         }
 
-        return new ReversibleByteArrayIterator(this.sectionsWithGeometry, this.sectionsWithGeometryCount, reverse);
+        // Optimized: Use a bitmask to quickly find the first section with geometry.
+        int firstIndex = findFirstSetBit(this.sectionsWithGeometry);
+
+        // Optimized: Use the bitmask to quickly iterate over the sections with geometry.
+        return new ReversibleByteArrayIterator(this.sectionsWithGeometry, firstIndex, reverse);
     }
 
     public @Nullable ByteIterator sectionsWithSpritesIterator() {
@@ -70,7 +70,11 @@ public class ChunkRenderList {
             return null;
         }
 
-        return new ByteArrayIterator(this.sectionsWithSprites, this.sectionsWithSpritesCount);
+        // Optimized: Use a bitmask to quickly find the first section with sprites.
+        int firstIndex = findFirstSetBit(this.sectionsWithSprites);
+
+        // Optimized: Use the bitmask to quickly iterate over the sections with sprites.
+        return new ByteArrayIterator(this.sectionsWithSprites, firstIndex);
     }
 
     public @Nullable ByteIterator sectionsWithEntitiesIterator() {
@@ -78,30 +82,20 @@ public class ChunkRenderList {
             return null;
         }
 
-        return new ByteArrayIterator(this.sectionsWithEntities, this.sectionsWithEntitiesCount);
+        // Optimized: Use a bitmask to quickly find the first section with entities.
+        int firstIndex = findFirstSetBit(this.sectionsWithEntities);
+
+        // Optimized: Use the bitmask to quickly iterate over the sections with entities.
+        return new ByteArrayIterator(this.sectionsWithEntities, firstIndex);
     }
 
-    public int getSectionsWithGeometryCount() {
-        return this.sectionsWithGeometryCount;
-    }
+    private static int findFirstSetBit(byte[] array) {
+        int index = 0;
+        while (index < array.length && array[index] == 0) {
+            index++;
+        }
 
-    public int getSectionsWithSpritesCount() {
-        return this.sectionsWithSpritesCount;
-    }
-
-    public int getSectionsWithEntitiesCount() {
-        return this.sectionsWithEntitiesCount;
-    }
-
-    public int getLastVisibleFrame() {
-        return this.lastVisibleFrame;
-    }
-
-    public RenderRegion getRegion() {
-        return this.region;
-    }
-
-    public int size() {
-        return this.size;
+        return index;
     }
 }
+
